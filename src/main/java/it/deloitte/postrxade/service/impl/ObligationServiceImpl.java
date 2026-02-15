@@ -537,15 +537,15 @@ public class ObligationServiceImpl implements ObligationService {
                 // Uses bulk load + set-based operations for 10-20x speedup
                 // =====================================================
                 log.info("Using STAGING-BASED ingestion (high-performance ETL approach)");
-                processFilesWithStagingApproachForMerchants(soggettiFiles, rapportiFiles,
-                        daticontabiliFiles, collegamentiFiles, cambiondgFiles, submission, obligation, ingestionRef);
+                processFilesWithStagingApproachForMerchants(collegamentiFiles, soggettiFiles, rapportiFiles,
+                        daticontabiliFiles, cambiondgFiles, submission, obligation, ingestionRef);
             } else {
                 // =====================================================
                 // LEGACY ROW-BY-ROW APPROACH (kept for compatibility)
                 // =====================================================
                 log.info("Using LEGACY row-by-row ingestion approach");
-                processFilesWithLegacyApproach(soggettiFiles, rapportiFiles,
-                        daticontabiliFiles, collegamentiFiles, cambiondgFiles, submission, obligation, ingestionRef);
+                processFilesWithLegacyApproach(collegamentiFiles, soggettiFiles, rapportiFiles,
+                        daticontabiliFiles, cambiondgFiles, submission, obligation, ingestionRef);
             }
 //            s3Service.moveFileFromInputToInputLoaded(fileProps.eotFileName());
 
@@ -875,10 +875,10 @@ public class ObligationServiceImpl implements ObligationService {
 //    }
 
     private void processFilesWithStagingApproachForMerchants(
+            List<String> collegamentiFiles,
             List<String> soggettiFiles,
             List<String> rapportiFiles,
             List<String> daticontabiliFiles,
-            List<String> collegamentiFiles,
             List<String> cambiondgFiles,
             Submission submission,
             Obligation obligation,
@@ -887,120 +887,8 @@ public class ObligationServiceImpl implements ObligationService {
         long totalStartTime = System.currentTimeMillis();
 
 
-        // Phase 2: Process Soggetti files
-        log.info("=== STAGING Phase 2: Processing {} soggetti file(s) ===", soggettiFiles.size());
-        IngestionType soggettiType = ingestionTypeRepository.findByNameIgnoreCase("soggetti")
-                .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'soggetti' is not found"));
-
-        int totalSoggettiInserted = 0;
-        int totalSoggettiDuplicate = 0;
-
-        for (String keyName : soggettiFiles) {
-            String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
-            try (InputStream inputStream = s3Service.downloadFileAsStreamTest("SOGGETTI.txt")) {
-//            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
-                RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
-
-                log.info("Processing soggetti file: {}", fileName);
-                ingestionRef.set(this.ingestionService.createIngestionBySubmission(submission, soggettiType));
-
-                long fileStartTime = System.currentTimeMillis();
-                StagingResult result = stagingIngestionService.processSoggettiFile(remoteFile, ingestionRef.get(), submission);
-                long fileElapsed = System.currentTimeMillis() - fileStartTime;
-
-                totalSoggettiInserted += result.insertedCount();
-                totalSoggettiDuplicate += result.duplicateCount();
-
-                log.info("Completed soggetti file {} in {}ms: inserted={}, duplicates={}",
-                        fileName, fileElapsed, result.insertedCount(), result.duplicateCount());
-
-                ingestionService.markAsSuccess(ingestionRef.get());
-//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
-
-                stagingIngestionService.cleanupStaging(submission.getId());
-            }
-        }
-
-        log.info("=== STAGING Phase 2 Complete: {} soggetti inserted, {} duplicates ===",
-                totalSoggettiInserted, totalSoggettiDuplicate);
-
-        // Phase 3: Process Rapporti files
-        log.info("=== STAGING Phase 3: Processing {} rapporti file(s) ===", rapportiFiles.size());
-        IngestionType rapportiType = ingestionTypeRepository.findByNameIgnoreCase("rapporti")
-                .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'rapporti' is not found"));
-
-        int totalRapportiInserted = 0;
-        int totalRapportiDuplicate = 0;
-
-        for (String keyName : rapportiFiles) {
-            String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
-            try (InputStream inputStream = s3Service.downloadFileAsStreamTest("RAPPORTI.txt")) {
-//            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
-                RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
-
-                log.info("Processing rapporti file: {}", fileName);
-                ingestionRef.set(this.ingestionService.createIngestionBySubmission(submission, rapportiType));
-
-                long fileStartTime = System.currentTimeMillis();
-                StagingResult result = stagingIngestionService.processRapportiFile(remoteFile, ingestionRef.get(), submission);
-                long fileElapsed = System.currentTimeMillis() - fileStartTime;
-
-                totalRapportiInserted += result.insertedCount();
-                totalRapportiDuplicate += result.duplicateCount();
-
-                log.info("Completed rapporti file {} in {}ms: inserted={}, duplicates={}",
-                        fileName, fileElapsed, result.insertedCount(), result.duplicateCount());
-
-                ingestionService.markAsSuccess(ingestionRef.get());
-//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
-
-                stagingIngestionService.cleanupStaging(submission.getId());
-            }
-        }
-
-        log.info("=== STAGING Phase 3 Complete: {} rapporti inserted, {} duplicates ===",
-                totalRapportiInserted, totalRapportiDuplicate);
-
-        // Phase 3: Process Dati Contabili files
-        log.info("=== STAGING Phase 4: Processing {} daticontabili file(s) ===", daticontabiliFiles.size());
-        IngestionType daticontabiliType = ingestionTypeRepository.findByNameIgnoreCase("datiContabili")
-                .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'daticontabili' is not found"));
-
-        int totalDatiContabiliInserted = 0;
-        int totalDatiContabiliDuplicate = 0;
-
-        for (String keyName : daticontabiliFiles) {
-            String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
-            try (InputStream inputStream = s3Service.downloadFileAsStreamTest(keyName)) {
-//            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
-                RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
-
-                log.info("Processing daticontabili file: {}", fileName);
-                ingestionRef.set(this.ingestionService.createIngestionBySubmission(submission, daticontabiliType));
-
-                long fileStartTime = System.currentTimeMillis();
-                StagingResult result = stagingIngestionService.processDaticontabiliFile(remoteFile, ingestionRef.get(), submission);
-                long fileElapsed = System.currentTimeMillis() - fileStartTime;
-
-                totalDatiContabiliInserted += result.insertedCount();
-                totalDatiContabiliDuplicate += result.duplicateCount();
-
-                log.info("Completed daticontabili file {} in {}ms: inserted={}, duplicates={}",
-                        fileName, fileElapsed, result.insertedCount(), result.duplicateCount());
-
-                ingestionService.markAsSuccess(ingestionRef.get());
-//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
-
-                stagingIngestionService.cleanupStaging(submission.getId());
-            }
-        }
-
-        log.info("=== STAGING Phase 4 Complete: {} daticontabili inserted, {} duplicates ===",
-                totalDatiContabiliInserted, totalDatiContabiliDuplicate);
-
-
-        // Phase 1: Process Collegamenti files
-        log.info("=== STAGING Phase 1: Processing {} collegamenti file(s) ===", collegamentiFiles.size());
+        // Phase 1: Process Collegamenti files (PARENT ENTITY - MUST BE FIRST!)
+        log.info("=== STAGING Phase 1: Processing {} collegamenti file(s) (PARENT) ===", collegamentiFiles.size());
         IngestionType collegamentiType = ingestionTypeRepository.findByNameIgnoreCase("Collegamenti")
                 .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'collegamenti' is not found"));
 
@@ -1037,8 +925,120 @@ public class ObligationServiceImpl implements ObligationService {
                 totalCollegamentiInserted, totalCollegamentiDuplicate);
 
 
-        // Phase 5: Process Cambio NDG files
-        log.info("=== STAGING Phase 5: Processing {} cambiondg file(s) ===", cambiondgFiles.size());
+        // Phase 2: Process Soggetti files (CHILD - requires Collegamenti.ndg)
+        log.info("=== STAGING Phase 2: Processing {} soggetti file(s) (CHILD) ===", soggettiFiles.size());
+        IngestionType soggettiType = ingestionTypeRepository.findByNameIgnoreCase("soggetti")
+                .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'soggetti' is not found"));
+
+        int totalSoggettiInserted = 0;
+        int totalSoggettiDuplicate = 0;
+
+        for (String keyName : soggettiFiles) {
+            String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
+            try (InputStream inputStream = s3Service.downloadFileAsStreamTest("SOGGETTI.txt")) {
+//            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
+                RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
+
+                log.info("Processing soggetti file: {}", fileName);
+                ingestionRef.set(this.ingestionService.createIngestionBySubmission(submission, soggettiType));
+
+                long fileStartTime = System.currentTimeMillis();
+                StagingResult result = stagingIngestionService.processSoggettiFile(remoteFile, ingestionRef.get(), submission);
+                long fileElapsed = System.currentTimeMillis() - fileStartTime;
+
+                totalSoggettiInserted += result.insertedCount();
+                totalSoggettiDuplicate += result.duplicateCount();
+
+                log.info("Completed soggetti file {} in {}ms: inserted={}, duplicates={}",
+                        fileName, fileElapsed, result.insertedCount(), result.duplicateCount());
+
+                ingestionService.markAsSuccess(ingestionRef.get());
+//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
+
+                stagingIngestionService.cleanupStaging(submission.getId());
+            }
+        }
+
+        log.info("=== STAGING Phase 2 Complete: {} soggetti inserted, {} duplicates ===",
+                totalSoggettiInserted, totalSoggettiDuplicate);
+
+        // Phase 3: Process Rapporti files (CHILD - requires Collegamenti.chiave_rapporto)
+        log.info("=== STAGING Phase 3: Processing {} rapporti file(s) (CHILD) ===", rapportiFiles.size());
+        IngestionType rapportiType = ingestionTypeRepository.findByNameIgnoreCase("rapporti")
+                .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'rapporti' is not found"));
+
+        int totalRapportiInserted = 0;
+        int totalRapportiDuplicate = 0;
+
+        for (String keyName : rapportiFiles) {
+            String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
+            try (InputStream inputStream = s3Service.downloadFileAsStreamTest("RAPPORTI.txt")) {
+//            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
+                RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
+
+                log.info("Processing rapporti file: {}", fileName);
+                ingestionRef.set(this.ingestionService.createIngestionBySubmission(submission, rapportiType));
+
+                long fileStartTime = System.currentTimeMillis();
+                StagingResult result = stagingIngestionService.processRapportiFile(remoteFile, ingestionRef.get(), submission);
+                long fileElapsed = System.currentTimeMillis() - fileStartTime;
+
+                totalRapportiInserted += result.insertedCount();
+                totalRapportiDuplicate += result.duplicateCount();
+
+                log.info("Completed rapporti file {} in {}ms: inserted={}, duplicates={}",
+                        fileName, fileElapsed, result.insertedCount(), result.duplicateCount());
+
+                ingestionService.markAsSuccess(ingestionRef.get());
+//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
+
+                stagingIngestionService.cleanupStaging(submission.getId());
+            }
+        }
+
+        log.info("=== STAGING Phase 3 Complete: {} rapporti inserted, {} duplicates ===",
+                totalRapportiInserted, totalRapportiDuplicate);
+
+        // Phase 4: Process Dati Contabili files (CHILD - requires Collegamenti.chiave_rapporto)
+        log.info("=== STAGING Phase 4: Processing {} daticontabili file(s) (CHILD) ===", daticontabiliFiles.size());
+        IngestionType daticontabiliType = ingestionTypeRepository.findByNameIgnoreCase("datiContabili")
+                .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'daticontabili' is not found"));
+
+        int totalDatiContabiliInserted = 0;
+        int totalDatiContabiliDuplicate = 0;
+
+        for (String keyName : daticontabiliFiles) {
+            String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
+            try (InputStream inputStream = s3Service.downloadFileAsStreamTest(keyName)) {
+//            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
+                RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
+
+                log.info("Processing daticontabili file: {}", fileName);
+                ingestionRef.set(this.ingestionService.createIngestionBySubmission(submission, daticontabiliType));
+
+                long fileStartTime = System.currentTimeMillis();
+                StagingResult result = stagingIngestionService.processDaticontabiliFile(remoteFile, ingestionRef.get(), submission);
+                long fileElapsed = System.currentTimeMillis() - fileStartTime;
+
+                totalDatiContabiliInserted += result.insertedCount();
+                totalDatiContabiliDuplicate += result.duplicateCount();
+
+                log.info("Completed daticontabili file {} in {}ms: inserted={}, duplicates={}",
+                        fileName, fileElapsed, result.insertedCount(), result.duplicateCount());
+
+                ingestionService.markAsSuccess(ingestionRef.get());
+//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
+
+                stagingIngestionService.cleanupStaging(submission.getId());
+            }
+        }
+
+        log.info("=== STAGING Phase 4 Complete: {} daticontabili inserted, {} duplicates ===",
+                totalDatiContabiliInserted, totalDatiContabiliDuplicate);
+
+
+        // Phase 5: Process Cambio NDG files (INDEPENDENT - no FK constraints)
+        log.info("=== STAGING Phase 5: Processing {} cambiondg file(s) (INDEPENDENT) ===", cambiondgFiles.size());
         IngestionType cambiondgType = ingestionTypeRepository.findByNameIgnoreCase("cambioNdg")
                 .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'cambiondg' is not found"));
 
@@ -1078,11 +1078,11 @@ public class ObligationServiceImpl implements ObligationService {
 
         long totalElapsed = System.currentTimeMillis() - totalStartTime;
         log.info("=== STAGING INGESTION COMPLETE in {}ms ({} seconds) ===", totalElapsed, totalElapsed / 1000);
-        log.info("Summary: soggetti={}/{} inserted/dup, rapporti={}/{} inserted/dup, daticontabili={}/{} inserted/dup, collegamenti={}/{} inserted/dup, cambiondg={}/{} inserted/dup",
+        log.info("Summary: collegamenti={}/{} inserted/dup, soggetti={}/{} inserted/dup, rapporti={}/{} inserted/dup, daticontabili={}/{} inserted/dup, cambiondg={}/{} inserted/dup",
+                totalCollegamentiInserted, totalCollegamentiDuplicate,
                 totalSoggettiInserted, totalSoggettiDuplicate,
                 totalRapportiInserted, totalRapportiDuplicate,
                 totalDatiContabiliInserted, totalDatiContabiliDuplicate,
-                totalCollegamentiInserted, totalCollegamentiDuplicate,
                 totalCambioNdgInserted, totalCambioNdgDuplicate);
     }
 
@@ -1158,10 +1158,10 @@ public class ObligationServiceImpl implements ObligationService {
 //        }
 //    }
     private void processFilesWithLegacyApproach(
+            List<String> collegamentiFiles,
             List<String> soggettiFiles,
             List<String> rapportiFiles,
             List<String> daticontabiliFiles,
-            List<String> collegamentiFiles,
             List<String> cambiondgFiles,
             Submission submission,
             Obligation obligation,
@@ -1169,95 +1169,8 @@ public class ObligationServiceImpl implements ObligationService {
 
 //        Ingestion currentIngestion = null;
 
-        // Phase 1: Process Soggetti files
-        log.info("Phase 1: Processing {} soggetti file(s)", soggettiFiles.size());
-        IngestionType soggettiType = ingestionTypeRepository.findByNameIgnoreCase("soggetti")
-                .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'soggetti' is not found"));
-
-        for (String keyName : soggettiFiles) {
-            String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
-            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
-                RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
-
-                log.debug("Processing soggetti file: {}", remoteFile.name());
-                ingestionRef.set(this.ingestionService.createIngestionBySubmission(submission, soggettiType));
-                log.debug("Created ingestion: id={} for file: {}", ingestionRef.get().getId(), remoteFile.name());
-
-                long soggettiProcessStart = System.nanoTime();
-
-                merchantFileProcessingService.processWithImmediateSave(
-                        remoteFile, ingestionRef.get(), submission, obligation, this);
-
-                long soggettiProcessFinish = System.nanoTime();
-
-                long soggettiProcessingTime = Duration.ofNanos(soggettiProcessFinish - soggettiProcessStart).toSeconds();
-                log.debug("Completed processing soggetti file: {}, processing time: {} seconds",
-                        remoteFile.name(), soggettiProcessingTime);
-                ingestionService.markAsSuccess(ingestionRef.get());
-//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
-            }
-        }
-
-        // Phase 2: Process Rapporti files
-        log.info("Phase 2: Processing {} rapporti file(s)", rapportiFiles.size());
-        IngestionType rapportiType = ingestionTypeRepository.findByNameIgnoreCase("rapporti")
-                .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'rapporti' is not found"));
-
-        for (String keyName : rapportiFiles) {
-            String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
-            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
-                RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
-
-                log.debug("Processing rapporti file: {}", remoteFile.name());
-                ingestionRef.set(this.ingestionService.createIngestionBySubmission(submission, rapportiType));
-                log.debug("Created ingestion: id={} for file: {}", ingestionRef.get().getId(), remoteFile.name());
-
-                long rapportiProcessStart = System.nanoTime();
-
-                merchantFileProcessingService.processWithImmediateSave(
-                        remoteFile, ingestionRef.get(), submission, obligation, this);
-
-                long rapportiProcessFinish = System.nanoTime();
-
-                long rapportiProcessingTime = Duration.ofNanos(rapportiProcessFinish - rapportiProcessStart).toSeconds();
-                log.debug("Completed processing rapporti file: {}, processing time: {} seconds",
-                        remoteFile.name(), rapportiProcessingTime);
-                ingestionService.markAsSuccess(ingestionRef.get());
-//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
-            }
-        }
-
-        // Phase 3: Process Dati Contabili files
-        log.info("Phase 3: Processing {} daticontabili file(s)", daticontabiliFiles.size());
-        IngestionType daticontabiliType = ingestionTypeRepository.findByNameIgnoreCase("daticontabili")
-                .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'daticontabili' is not found"));
-
-        for (String keyName : daticontabiliFiles) {
-            String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
-            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
-                RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
-
-                log.debug("Processing daticontabili file: {}", remoteFile.name());
-                ingestionRef.set(this.ingestionService.createIngestionBySubmission(submission, daticontabiliType));
-                log.debug("Created ingestion: id={} for file: {}", ingestionRef.get().getId(), remoteFile.name());
-
-                long daticontabiliProcessStart = System.nanoTime();
-
-                merchantFileProcessingService.processWithImmediateSave(
-                        remoteFile, ingestionRef.get(), submission, obligation, this);
-
-                long daticontabiliProcessFinish = System.nanoTime();
-
-                long daticontabiliProcessingTime = Duration.ofNanos(daticontabiliProcessFinish - daticontabiliProcessStart).toSeconds();
-                log.debug("Completed processing daticontabili file: {}, processing time: {} seconds",
-                        remoteFile.name(), daticontabiliProcessingTime);
-                ingestionService.markAsSuccess(ingestionRef.get());
-//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
-            }
-        }
-
-        // Phase 4: Process Collegamenti files
-        log.info("Phase 4: Processing {} collegamenti file(s)", collegamentiFiles.size());
+        // Phase 1: Process Collegamenti files (PARENT - MUST BE FIRST!)
+        log.info("Phase 1: Processing {} collegamenti file(s) (PARENT)", collegamentiFiles.size());
         IngestionType collegamentiType = ingestionTypeRepository.findByNameIgnoreCase("collegamenti")
                 .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'collegamenti' is not found"));
 
@@ -1285,8 +1198,95 @@ public class ObligationServiceImpl implements ObligationService {
             }
         }
 
-        // Phase 5: Process Cambio NDG files
-        log.info("Phase 5: Processing {} cambiondg file(s)", cambiondgFiles.size());
+        // Phase 2: Process Soggetti files (CHILD - requires Collegamenti.ndg)
+        log.info("Phase 2: Processing {} soggetti file(s) (CHILD)", soggettiFiles.size());
+        IngestionType soggettiType = ingestionTypeRepository.findByNameIgnoreCase("soggetti")
+                .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'soggetti' is not found"));
+
+        for (String keyName : soggettiFiles) {
+            String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
+            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
+                RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
+
+                log.debug("Processing soggetti file: {}", remoteFile.name());
+                ingestionRef.set(this.ingestionService.createIngestionBySubmission(submission, soggettiType));
+                log.debug("Created ingestion: id={} for file: {}", ingestionRef.get().getId(), remoteFile.name());
+
+                long soggettiProcessStart = System.nanoTime();
+
+                merchantFileProcessingService.processWithImmediateSave(
+                        remoteFile, ingestionRef.get(), submission, obligation, this);
+
+                long soggettiProcessFinish = System.nanoTime();
+
+                long soggettiProcessingTime = Duration.ofNanos(soggettiProcessFinish - soggettiProcessStart).toSeconds();
+                log.debug("Completed processing soggetti file: {}, processing time: {} seconds",
+                        remoteFile.name(), soggettiProcessingTime);
+                ingestionService.markAsSuccess(ingestionRef.get());
+//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
+            }
+        }
+
+        // Phase 3: Process Rapporti files (CHILD - requires Collegamenti.chiave_rapporto)
+        log.info("Phase 3: Processing {} rapporti file(s) (CHILD)", rapportiFiles.size());
+        IngestionType rapportiType = ingestionTypeRepository.findByNameIgnoreCase("rapporti")
+                .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'rapporti' is not found"));
+
+        for (String keyName : rapportiFiles) {
+            String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
+            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
+                RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
+
+                log.debug("Processing rapporti file: {}", remoteFile.name());
+                ingestionRef.set(this.ingestionService.createIngestionBySubmission(submission, rapportiType));
+                log.debug("Created ingestion: id={} for file: {}", ingestionRef.get().getId(), remoteFile.name());
+
+                long rapportiProcessStart = System.nanoTime();
+
+                merchantFileProcessingService.processWithImmediateSave(
+                        remoteFile, ingestionRef.get(), submission, obligation, this);
+
+                long rapportiProcessFinish = System.nanoTime();
+
+                long rapportiProcessingTime = Duration.ofNanos(rapportiProcessFinish - rapportiProcessStart).toSeconds();
+                log.debug("Completed processing rapporti file: {}, processing time: {} seconds",
+                        remoteFile.name(), rapportiProcessingTime);
+                ingestionService.markAsSuccess(ingestionRef.get());
+//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
+            }
+        }
+
+        // Phase 4: Process Dati Contabili files (CHILD - requires Collegamenti.chiave_rapporto)
+        log.info("Phase 4: Processing {} daticontabili file(s) (CHILD)", daticontabiliFiles.size());
+        IngestionType daticontabiliType = ingestionTypeRepository.findByNameIgnoreCase("daticontabili")
+                .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'daticontabili' is not found"));
+
+        for (String keyName : daticontabiliFiles) {
+            String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
+            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
+                RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
+
+                log.debug("Processing daticontabili file: {}", remoteFile.name());
+                ingestionRef.set(this.ingestionService.createIngestionBySubmission(submission, daticontabiliType));
+                log.debug("Created ingestion: id={} for file: {}", ingestionRef.get().getId(), remoteFile.name());
+
+                long daticontabiliProcessStart = System.nanoTime();
+
+                merchantFileProcessingService.processWithImmediateSave(
+                        remoteFile, ingestionRef.get(), submission, obligation, this);
+
+                long daticontabiliProcessFinish = System.nanoTime();
+
+                long daticontabiliProcessingTime = Duration.ofNanos(daticontabiliProcessFinish - daticontabiliProcessStart).toSeconds();
+                log.debug("Completed processing daticontabili file: {}, processing time: {} seconds",
+                        remoteFile.name(), daticontabiliProcessingTime);
+                ingestionService.markAsSuccess(ingestionRef.get());
+//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
+            }
+        }
+
+        // Phase 5: Process Cambio NDG files (INDEPENDENT - no FK constraints)
+        log.info("Phase 5: Processing {} cambiondg file(s) (INDEPENDENT)", cambiondgFiles.size());
         IngestionType cambiondgType = ingestionTypeRepository.findByNameIgnoreCase("cambiondg")
                 .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'cambiondg' is not found"));
 
@@ -1320,18 +1320,26 @@ public class ObligationServiceImpl implements ObligationService {
         Log log = new Log();
         log.setSubmission(submission);
         log.setBeforeSubmissionStatus(submission.getCurrentSubmissionStatus());
-        log.setMessage(errorMsg.substring(0, Math.min(255, errorMsg.length( ))));
+        log.setMessage(errorMsg.substring(0, Math.min(255, errorMsg.length())));
 
         submissionService.markAsError(submission);
 
         log.setAfterSubmissionStatus(submission.getCurrentSubmissionStatus());
         logRepository.save(log);
 
-        rapportiRepository.deleteBySubmissionId(submission.getId());
-        collegamentiRepository.deleteBySubmissionId(submission.getId());
-        soggettiRepository.deleteBySubmissionId(submission.getId());
-        datiContabiliRepository.deleteBySubmissionId(submission.getId());
+        // Delete in correct order: children before parent (respecting FK constraints)
+        // Phase 1: Delete independent table
         cambioNdgRepository.deleteBySubmissionId(submission.getId());
+        
+        // Phase 2: Delete children (have FK to Collegamenti)
+        datiContabiliRepository.deleteBySubmissionId(submission.getId());
+        rapportiRepository.deleteBySubmissionId(submission.getId());
+        soggettiRepository.deleteBySubmissionId(submission.getId());
+        
+        // Phase 3: Delete parent (must be last)
+        collegamentiRepository.deleteBySubmissionId(submission.getId());
+        
+        // Phase 4: Delete error tracking
         errorCauseRepository.deleteBySubmissionId(submission.getId());
         errorRecordRepository.deleteBySubmissionId(submission.getId());
 

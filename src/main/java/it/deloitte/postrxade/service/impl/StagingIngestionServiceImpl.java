@@ -165,11 +165,17 @@ public class StagingIngestionServiceImpl implements StagingIngestionService {
             createErrorRecordsForDuplicateSoggetti(ingestion, submission);
         }
 
-        long elapsed = System.currentTimeMillis() - startTime;
-        log.info("Completed merchant ingestion in {}ms: parsed={}, inserted={}, duplicates={}, validationErrors={}",
-                elapsed, totalParsed, stagingResult.insertedCount(), stagingResult.duplicateCount(), totalValidationErrors);
+        // Phase 5: CRITICAL - Check for missing Collegamenti parent (FK validation)
+        int missingParentCount = createErrorRecordsForMissingSoggettiCollegamenti(ingestion, submission);
+        if (missingParentCount > 0) {
+            log.warn("Found {} soggetti records with missing Collegamenti parent", missingParentCount);
+        }
 
-        return new StagingResult(stagingResult.insertedCount(), stagingResult.duplicateCount(), 0, totalValidationErrors);
+        long elapsed = System.currentTimeMillis() - startTime;
+        log.info("Completed merchant ingestion in {}ms: parsed={}, inserted={}, duplicates={}, validationErrors={}, missingParents={}",
+                elapsed, totalParsed, stagingResult.insertedCount(), stagingResult.duplicateCount(), totalValidationErrors, missingParentCount);
+
+        return new StagingResult(stagingResult.insertedCount(), stagingResult.duplicateCount(), missingParentCount, totalValidationErrors);
     }
 
     /**
@@ -595,6 +601,96 @@ public class StagingIngestionServiceImpl implements StagingIngestionService {
         return errorRecords.size();
     }
 
+    /**
+     * Create ErrorRecords for Soggetti with missing Collegamenti parent (FK validation).
+     * This is CRITICAL for data integrity - children must have valid parent references.
+     */
+    private int createErrorRecordsForMissingSoggettiCollegamenti(Ingestion ingestion, Submission submission) {
+        List<Object[]> missingParents = stagingRepository.getMissingSoggettiCollegamentiDetails(submission.getId());
+        if (missingParents.isEmpty()) return 0;
+
+        List<ErrorRecord> errorRecords = new ArrayList<>();
+        for (Object[] row : missingParents) {
+            String rawRow = row[0] != null ? String.valueOf(row[0]) : "";
+            String errorMessage = row[1] != null ? String.valueOf(row[1]) : "Missing Collegamenti parent for Soggetti";
+
+            try {
+                ErrorRecord errorRecord = createErrorRecord(
+                        List.of(new ErrorRecordCause(errorMessage, ErrorTypeCode.FOREIGN_KEY_ERROR.getErrorCode())),
+                        rawRow, ingestion, submission
+                );
+                errorRecords.add(errorRecord);
+            } catch (NotFoundRecordException e) {
+                log.warn("Failed to create error record for missing Collegamenti parent in soggetti: {}", e.getMessage());
+            }
+        }
+
+        if (!errorRecords.isEmpty()) {
+            errorRecordRepository.bulkInsertRecordsWithCauses(errorRecords, ingestion.getId());
+        }
+        return errorRecords.size();
+    }
+
+    /**
+     * Create ErrorRecords for Rapporti with missing Collegamenti parent (FK validation).
+     * This is CRITICAL for data integrity - children must have valid parent references.
+     */
+    private int createErrorRecordsForMissingRapportiCollegamenti(Ingestion ingestion, Submission submission) {
+        List<Object[]> missingParents = stagingRepository.getMissingRapportiCollegamentiDetails(submission.getId());
+        if (missingParents.isEmpty()) return 0;
+
+        List<ErrorRecord> errorRecords = new ArrayList<>();
+        for (Object[] row : missingParents) {
+            String rawRow = row[0] != null ? String.valueOf(row[0]) : "";
+            String errorMessage = row[1] != null ? String.valueOf(row[1]) : "Missing Collegamenti parent for Rapporti";
+
+            try {
+                ErrorRecord errorRecord = createErrorRecord(
+                        List.of(new ErrorRecordCause(errorMessage, ErrorTypeCode.FOREIGN_KEY_ERROR.getErrorCode())),
+                        rawRow, ingestion, submission
+                );
+                errorRecords.add(errorRecord);
+            } catch (NotFoundRecordException e) {
+                log.warn("Failed to create error record for missing Collegamenti parent in rapporti: {}", e.getMessage());
+            }
+        }
+
+        if (!errorRecords.isEmpty()) {
+            errorRecordRepository.bulkInsertRecordsWithCauses(errorRecords, ingestion.getId());
+        }
+        return errorRecords.size();
+    }
+
+    /**
+     * Create ErrorRecords for DatiContabili with missing Collegamenti parent (FK validation).
+     * This is CRITICAL for data integrity - children must have valid parent references.
+     */
+    private int createErrorRecordsForMissingDatiContabiliCollegamenti(Ingestion ingestion, Submission submission) {
+        List<Object[]> missingParents = stagingRepository.getMissingDatiContabiliCollegamentiDetails(submission.getId());
+        if (missingParents.isEmpty()) return 0;
+
+        List<ErrorRecord> errorRecords = new ArrayList<>();
+        for (Object[] row : missingParents) {
+            String rawRow = row[0] != null ? String.valueOf(row[0]) : "";
+            String errorMessage = row[1] != null ? String.valueOf(row[1]) : "Missing Collegamenti parent for DatiContabili";
+
+            try {
+                ErrorRecord errorRecord = createErrorRecord(
+                        List.of(new ErrorRecordCause(errorMessage, ErrorTypeCode.FOREIGN_KEY_ERROR.getErrorCode())),
+                        rawRow, ingestion, submission
+                );
+                errorRecords.add(errorRecord);
+            } catch (NotFoundRecordException e) {
+                log.warn("Failed to create error record for missing Collegamenti parent in daticontabili: {}", e.getMessage());
+            }
+        }
+
+        if (!errorRecords.isEmpty()) {
+            errorRecordRepository.bulkInsertRecordsWithCauses(errorRecords, ingestion.getId());
+        }
+        return errorRecords.size();
+    }
+
     private int createErrorRecordsForDuplicateCambioNdg(Ingestion ingestion, Submission submission) {
         List<Object[]> duplicates = stagingRepository.getDuplicateCambioNdgDetails(submission.getId());
         if (duplicates.isEmpty()) return 0;
@@ -766,11 +862,17 @@ public class StagingIngestionServiceImpl implements StagingIngestionService {
             createErrorRecordsForDuplicateRapporti(ingestion, submission);
         }
 
-        long elapsed = System.currentTimeMillis() - startTime;
-        log.info("Completed rapporti ingestion in {}ms: parsed={}, inserted={}, duplicates={}, validationErrors={}",
-                elapsed, totalParsed, stagingResult.insertedCount(), stagingResult.duplicateCount(), totalValidationErrors);
+        // CRITICAL: Check for missing Collegamenti parent (FK validation)
+        int missingParentCount = createErrorRecordsForMissingRapportiCollegamenti(ingestion, submission);
+        if (missingParentCount > 0) {
+            log.warn("Found {} rapporti records with missing Collegamenti parent", missingParentCount);
+        }
 
-        return new StagingResult(stagingResult.insertedCount(), stagingResult.duplicateCount(), 0, totalValidationErrors);
+        long elapsed = System.currentTimeMillis() - startTime;
+        log.info("Completed rapporti ingestion in {}ms: parsed={}, inserted={}, duplicates={}, validationErrors={}, missingParents={}",
+                elapsed, totalParsed, stagingResult.insertedCount(), stagingResult.duplicateCount(), totalValidationErrors, missingParentCount);
+
+        return new StagingResult(stagingResult.insertedCount(), stagingResult.duplicateCount(), missingParentCount, totalValidationErrors);
     }
 
     @Override
@@ -857,11 +959,17 @@ public class StagingIngestionServiceImpl implements StagingIngestionService {
             createErrorRecordsForDuplicateDatiContabili(ingestion, submission);
         }
 
-        long elapsed = System.currentTimeMillis() - startTime;
-        log.info("Completed daticontabili ingestion in {}ms: parsed={}, inserted={}, duplicates={}, validationErrors={}",
-                elapsed, totalParsed, stagingResult.insertedCount(), stagingResult.duplicateCount(), totalValidationErrors);
+        // CRITICAL: Check for missing Collegamenti parent (FK validation)
+        int missingParentCount = createErrorRecordsForMissingDatiContabiliCollegamenti(ingestion, submission);
+        if (missingParentCount > 0) {
+            log.warn("Found {} daticontabili records with missing Collegamenti parent", missingParentCount);
+        }
 
-        return new StagingResult(stagingResult.insertedCount(), stagingResult.duplicateCount(), 0, totalValidationErrors);
+        long elapsed = System.currentTimeMillis() - startTime;
+        log.info("Completed daticontabili ingestion in {}ms: parsed={}, inserted={}, duplicates={}, validationErrors={}, missingParents={}",
+                elapsed, totalParsed, stagingResult.insertedCount(), stagingResult.duplicateCount(), totalValidationErrors, missingParentCount);
+
+        return new StagingResult(stagingResult.insertedCount(), stagingResult.duplicateCount(), missingParentCount, totalValidationErrors);
     }
 
     @Override

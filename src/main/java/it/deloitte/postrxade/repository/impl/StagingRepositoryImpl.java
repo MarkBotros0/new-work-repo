@@ -921,6 +921,66 @@ public class StagingRepositoryImpl implements StagingRepository {
 
     @Override
     @Transactional(readOnly = true)
+    public List<Object[]> getMissingSoggettiCollegamentiDetails(Long submissionId) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> results = entityManager.createNativeQuery("""
+                SELECT stg.raw_row, 
+                       CONCAT('Missing Collegamenti parent for ndg: ', stg.ndg) as error_message
+                FROM STG_SOGGETTI stg
+                LEFT JOIN MERCHANT_COLLEGAMENTI c 
+                    ON stg.ndg = c.ndg 
+                    AND stg.fk_submission = c.fk_submission
+                WHERE stg.fk_submission = :submissionId
+                  AND stg.process_status IS NULL
+                  AND c.pk_collegamenti IS NULL
+                """)
+                .setParameter("submissionId", submissionId)
+                .getResultList();
+        return results != null ? results : new ArrayList<>();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Object[]> getMissingRapportiCollegamentiDetails(Long submissionId) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> results = entityManager.createNativeQuery("""
+                SELECT stg.raw_row, 
+                       CONCAT('Missing Collegamenti parent for chiave_rapporto: ', stg.chiave_rapporto) as error_message
+                FROM STG_RAPPORTI stg
+                LEFT JOIN MERCHANT_COLLEGAMENTI c 
+                    ON stg.chiave_rapporto = c.chiave_rapporto 
+                    AND stg.fk_submission = c.fk_submission
+                WHERE stg.fk_submission = :submissionId
+                  AND stg.process_status IS NULL
+                  AND c.pk_collegamenti IS NULL
+                """)
+                .setParameter("submissionId", submissionId)
+                .getResultList();
+        return results != null ? results : new ArrayList<>();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Object[]> getMissingDatiContabiliCollegamentiDetails(Long submissionId) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> results = entityManager.createNativeQuery("""
+                SELECT stg.raw_row, 
+                       CONCAT('Missing Collegamenti parent for chiave_rapporto: ', stg.chiave_rapporto) as error_message
+                FROM STG_DATI_CONTABILI stg
+                LEFT JOIN MERCHANT_COLLEGAMENTI c 
+                    ON stg.chiave_rapporto = c.chiave_rapporto 
+                    AND stg.fk_submission = c.fk_submission
+                WHERE stg.fk_submission = :submissionId
+                  AND stg.process_status IS NULL
+                  AND c.pk_collegamenti IS NULL
+                """)
+                .setParameter("submissionId", submissionId)
+                .getResultList();
+        return results != null ? results : new ArrayList<>();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<Object[]> getDuplicateCambioNdgDetails(Long submissionId) {
         @SuppressWarnings("unchecked")
         List<Object[]> results = entityManager.createNativeQuery("""

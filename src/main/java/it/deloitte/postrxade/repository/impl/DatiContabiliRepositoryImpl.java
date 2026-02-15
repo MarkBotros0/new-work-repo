@@ -80,9 +80,9 @@ public class DatiContabiliRepositoryImpl implements DatiContabiliRepositoryCusto
 
     @Override
     public List<DatiContabili> findByOutputId(Long outputId, int offset, int limit) {
-        String jpql = "SELECT DISTINCT t FROM MERCHANT_DATI_CONTABILI mdc " +
+        String jpql = "SELECT DISTINCT mdc FROM DatiContabili mdc " +
                 "WHERE mdc.output.id = :outputId " +
-                "ORDER BY mc.id ASC";
+                "ORDER BY mdc.id ASC";
 
         @SuppressWarnings("unchecked")
         List<DatiContabili> datiContabiliList = entityManager

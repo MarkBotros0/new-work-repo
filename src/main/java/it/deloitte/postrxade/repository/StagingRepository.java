@@ -202,6 +202,33 @@ public interface StagingRepository {
     List<Object[]> getMissingReferenceCollegamentiDetails(Long submissionId);
 
     /**
+     * Get detailed info for soggetti with missing Collegamenti parent (for ErrorRecord creation).
+     * Returns: raw_row, error_message
+     *
+     * @param submissionId the submission ID
+     * @return list of Object[] with [raw_row, error_message]
+     */
+    List<Object[]> getMissingSoggettiCollegamentiDetails(Long submissionId);
+
+    /**
+     * Get detailed info for rapporti with missing Collegamenti parent (for ErrorRecord creation).
+     * Returns: raw_row, error_message
+     *
+     * @param submissionId the submission ID
+     * @return list of Object[] with [raw_row, error_message]
+     */
+    List<Object[]> getMissingRapportiCollegamentiDetails(Long submissionId);
+
+    /**
+     * Get detailed info for dati contabili with missing Collegamenti parent (for ErrorRecord creation).
+     * Returns: raw_row, error_message
+     *
+     * @param submissionId the submission ID
+     * @return list of Object[] with [raw_row, error_message]
+     */
+    List<Object[]> getMissingDatiContabiliCollegamentiDetails(Long submissionId);
+
+    /**
      * Get detailed info for duplicate merchants (for ErrorRecord creation).
      * Returns: raw_row, error_message
      *

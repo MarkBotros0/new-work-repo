@@ -354,5 +354,137 @@ public class CollegamentiRepositoryImpl implements CollegamentiRepositoryCustom 
         return collegamentiList;
     }
 
+    @Override
+    public Map<String, Integer> checkCollegamentiForSoggetti(List<Soggetti> soggettiList, Submission submission) {
+        if (soggettiList == null || soggettiList.isEmpty()) {
+            return new HashMap<>();
+        }
+
+        // Build VALUES block for batch query
+        Set<String> uniqueRows = new LinkedHashSet<>();
+        for (Soggetti s : soggettiList) {
+            uniqueRows.add("SELECT '" + escape(s.getNdg()) + "' AS ndg, " + submission.getId() + " AS fk_submission");
+        }
+        String valuesBlock = String.join(" UNION ALL ", uniqueRows);
+
+        String sql = """
+                WITH SOGGETTI_INPUT (ndg, fk_submission) AS (
+                    %s
+                )
+                SELECT 
+                    si.ndg,
+                    si.fk_submission,
+                    CASE WHEN c.pk_collegamenti IS NOT NULL THEN 1 ELSE 0 END AS ExistsFlag
+                FROM SOGGETTI_INPUT si
+                LEFT JOIN MERCHANT_COLLEGAMENTI c 
+                    ON si.ndg = c.ndg 
+                    AND si.fk_submission = c.fk_submission
+                """.formatted(valuesBlock);
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = entityManager.createNativeQuery(sql).getResultList();
+
+        Map<String, Integer> result = new HashMap<>();
+        for (Object[] row : rows) {
+            String ndg = String.valueOf(row[0]);
+            String submissionId = String.valueOf(row[1]);
+            Number existsNumber = row[2] instanceof Number ? (Number) row[2] : 0;
+            Integer existsFlag = existsNumber != null ? existsNumber.intValue() : 0;
+            String key = ndg + "_" + submissionId;
+            result.put(key, existsFlag);
+        }
+
+        entityManager.clear();
+        return result;
+    }
+
+    @Override
+    public Map<String, Integer> checkCollegamentiForRapporti(List<Rapporti> rapportiList, Submission submission) {
+        if (rapportiList == null || rapportiList.isEmpty()) {
+            return new HashMap<>();
+        }
+
+        // Build VALUES block for batch query
+        Set<String> uniqueRows = new LinkedHashSet<>();
+        for (Rapporti r : rapportiList) {
+            uniqueRows.add("SELECT '" + escape(r.getChiaveRapporto()) + "' AS chiave_rapporto, " + submission.getId() + " AS fk_submission");
+        }
+        String valuesBlock = String.join(" UNION ALL ", uniqueRows);
+
+        String sql = """
+                WITH RAPPORTI_INPUT (chiave_rapporto, fk_submission) AS (
+                    %s
+                )
+                SELECT 
+                    ri.chiave_rapporto,
+                    ri.fk_submission,
+                    CASE WHEN c.pk_collegamenti IS NOT NULL THEN 1 ELSE 0 END AS ExistsFlag
+                FROM RAPPORTI_INPUT ri
+                LEFT JOIN MERCHANT_COLLEGAMENTI c 
+                    ON ri.chiave_rapporto = c.chiave_rapporto 
+                    AND ri.fk_submission = c.fk_submission
+                """.formatted(valuesBlock);
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = entityManager.createNativeQuery(sql).getResultList();
+
+        Map<String, Integer> result = new HashMap<>();
+        for (Object[] row : rows) {
+            String chiaveRapporto = String.valueOf(row[0]);
+            String submissionId = String.valueOf(row[1]);
+            Number existsNumber = row[2] instanceof Number ? (Number) row[2] : 0;
+            Integer existsFlag = existsNumber != null ? existsNumber.intValue() : 0;
+            String key = chiaveRapporto + "_" + submissionId;
+            result.put(key, existsFlag);
+        }
+
+        entityManager.clear();
+        return result;
+    }
+
+    @Override
+    public Map<String, Integer> checkCollegamentiForDatiContabili(List<DatiContabili> datiContabiliList, Submission submission) {
+        if (datiContabiliList == null || datiContabiliList.isEmpty()) {
+            return new HashMap<>();
+        }
+
+        // Build VALUES block for batch query
+        Set<String> uniqueRows = new LinkedHashSet<>();
+        for (DatiContabili d : datiContabiliList) {
+            uniqueRows.add("SELECT '" + escape(d.getChiaveRapporto()) + "' AS chiave_rapporto, " + submission.getId() + " AS fk_submission");
+        }
+        String valuesBlock = String.join(" UNION ALL ", uniqueRows);
+
+        String sql = """
+                WITH DATI_CONTABILI_INPUT (chiave_rapporto, fk_submission) AS (
+                    %s
+                )
+                SELECT 
+                    di.chiave_rapporto,
+                    di.fk_submission,
+                    CASE WHEN c.pk_collegamenti IS NOT NULL THEN 1 ELSE 0 END AS ExistsFlag
+                FROM DATI_CONTABILI_INPUT di
+                LEFT JOIN MERCHANT_COLLEGAMENTI c 
+                    ON di.chiave_rapporto = c.chiave_rapporto 
+                    AND di.fk_submission = c.fk_submission
+                """.formatted(valuesBlock);
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = entityManager.createNativeQuery(sql).getResultList();
+
+        Map<String, Integer> result = new HashMap<>();
+        for (Object[] row : rows) {
+            String chiaveRapporto = String.valueOf(row[0]);
+            String submissionId = String.valueOf(row[1]);
+            Number existsNumber = row[2] instanceof Number ? (Number) row[2] : 0;
+            Integer existsFlag = existsNumber != null ? existsNumber.intValue() : 0;
+            String key = chiaveRapporto + "_" + submissionId;
+            result.put(key, existsFlag);
+        }
+
+        entityManager.clear();
+        return result;
+    }
+
 
 }

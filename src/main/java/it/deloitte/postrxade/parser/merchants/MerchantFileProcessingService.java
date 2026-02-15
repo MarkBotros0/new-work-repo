@@ -397,16 +397,37 @@ public class MerchantFileProcessingService {
             Submission submission) throws NotFoundRecordException {
         List<Soggetti> updatedSoggetti = new ArrayList<>();
         Map<String, Integer> existingMap = soggettiRepository.checkExisting(soggettiList, submission);
+        
+        // CRITICAL: Check for missing Collegamenti parent (FK validation)
+        Map<String, Integer> collegamentiMap = collegamentiRepository.checkCollegamentiForSoggetti(soggettiList, submission);
 
         for (Soggetti soggetti : soggettiList) {
             String key = soggetti.getIntermediario();
             Integer existsFlag = existingMap.getOrDefault(key, 0);
-            if (existsFlag == 1) {
-                String description = "Soggetti is not created as it has a duplicate in db";
+            
+            // Check for missing Collegamenti parent
+            String collegamentiKey = soggetti.getNdg() + "_" + submission.getId();
+            Integer hasCollegamenti = collegamentiMap.getOrDefault(collegamentiKey, 0);
+            
+            if (hasCollegamenti == 0) {
+                // Missing Collegamenti parent - create error record
+                String description = "Soggetti cannot be created: missing Collegamenti parent for ndg: " + soggetti.getNdg();
+                log.warn("Missing Collegamenti parent for Soggetti - ndg={}, submission={}", 
+                        soggetti.getNdg(), submission.getId());
 
                 ErrorRecordCause errorWithDescription = new ErrorRecordCause(
                         description,
                         ErrorTypeCode.FOREIGN_KEY_ERROR.getErrorCode()
+                );
+
+                ErrorRecord error = createErrorRecord(List.of(errorWithDescription), soggetti.getRawRow(), ingestion, submission);
+                errorRecords.add(error);
+            } else if (existsFlag == 1) {
+                String description = "Soggetti is not created as it has a duplicate in db";
+
+                ErrorRecordCause errorWithDescription = new ErrorRecordCause(
+                        description,
+                        ErrorTypeCode.MERCHANT_ALREADY_EXISTS.getErrorCode()
                 );
 
                 ErrorRecord error = createErrorRecord(List.of(errorWithDescription), soggetti.getRawRow(), ingestion, submission);
@@ -427,14 +448,33 @@ public class MerchantFileProcessingService {
             Submission submission) throws NotFoundRecordException {
         List<Rapporti> updatedRapporti = new ArrayList<>();
         Map<String, Integer> existingMap = rapportiRepository.checkExisting(rapportiList, submission);
+        
+        // CRITICAL: Check for missing Collegamenti parent (FK validation)
+        Map<String, Integer> collegamentiMap = collegamentiRepository.checkCollegamentiForRapporti(rapportiList, submission);
 
         for (Rapporti rapporti : rapportiList) {
-            String key = rapporti.getIntermediario() + "_" + rapporti.getChiaveRapporto() + "_" + submission.getId(); // Ensure key matches your entity logic
+            String key = rapporti.getIntermediario() + "_" + rapporti.getChiaveRapporto() + "_" + submission.getId();
             Integer existsFlag = existingMap.getOrDefault(key, 0);
-            if (existsFlag == 1) {
+            
+            // Check for missing Collegamenti parent
+            String collegamentiKey = rapporti.getChiaveRapporto() + "_" + submission.getId();
+            Integer hasCollegamenti = collegamentiMap.getOrDefault(collegamentiKey, 0);
+            
+            if (hasCollegamenti == 0) {
+                // Missing Collegamenti parent - create error record
+                String description = "Rapporti cannot be created: missing Collegamenti parent for chiave_rapporto: " + rapporti.getChiaveRapporto();
+                log.warn("Missing Collegamenti parent for Rapporti - chiave_rapporto={}, submission={}", 
+                        rapporti.getChiaveRapporto(), submission.getId());
+
+                ErrorRecordCause errorWithDescription = new ErrorRecordCause(
+                        description,
+                        ErrorTypeCode.FOREIGN_KEY_ERROR.getErrorCode()
+                );
+                errorRecords.add(createErrorRecord(List.of(errorWithDescription), rapporti.getRawRow(), ingestion, submission));
+            } else if (existsFlag == 1) {
                 ErrorRecordCause errorWithDescription = new ErrorRecordCause(
                         "Rapporti is not created as it has a duplicate in db",
-                        ErrorTypeCode.FOREIGN_KEY_ERROR.getErrorCode()
+                        ErrorTypeCode.MERCHANT_ALREADY_EXISTS.getErrorCode()
                 );
                 errorRecords.add(createErrorRecord(List.of(errorWithDescription), rapporti.getRawRow(), ingestion, submission));
             } else {
@@ -452,14 +492,33 @@ public class MerchantFileProcessingService {
             Submission submission) throws NotFoundRecordException {
         List<DatiContabili> updatedDatiContabili = new ArrayList<>();
         Map<String, Integer> existingMap = datiContabiliRepository.checkExisting(datiContabiliList, submission);
+        
+        // CRITICAL: Check for missing Collegamenti parent (FK validation)
+        Map<String, Integer> collegamentiMap = collegamentiRepository.checkCollegamentiForDatiContabili(datiContabiliList, submission);
 
         for (DatiContabili datiContabili : datiContabiliList) {
             String key = datiContabili.getIntermediario();
             Integer existsFlag = existingMap.getOrDefault(key, 0);
-            if (existsFlag == 1) {
+            
+            // Check for missing Collegamenti parent
+            String collegamentiKey = datiContabili.getChiaveRapporto() + "_" + submission.getId();
+            Integer hasCollegamenti = collegamentiMap.getOrDefault(collegamentiKey, 0);
+            
+            if (hasCollegamenti == 0) {
+                // Missing Collegamenti parent - create error record
+                String description = "Dati Contabili cannot be created: missing Collegamenti parent for chiave_rapporto: " + datiContabili.getChiaveRapporto();
+                log.warn("Missing Collegamenti parent for DatiContabili - chiave_rapporto={}, submission={}", 
+                        datiContabili.getChiaveRapporto(), submission.getId());
+
+                ErrorRecordCause errorWithDescription = new ErrorRecordCause(
+                        description,
+                        ErrorTypeCode.FOREIGN_KEY_ERROR.getErrorCode()
+                );
+                errorRecords.add(createErrorRecord(List.of(errorWithDescription), datiContabili.getRawRow(), ingestion, submission));
+            } else if (existsFlag == 1) {
                 ErrorRecordCause errorWithDescription = new ErrorRecordCause(
                         "Dati Contabili is not created as it has a duplicate in db",
-                        ErrorTypeCode.FOREIGN_KEY_ERROR.getErrorCode()
+                        ErrorTypeCode.MERCHANT_ALREADY_EXISTS.getErrorCode()
                 );
                 errorRecords.add(createErrorRecord(List.of(errorWithDescription), datiContabili.getRawRow(), ingestion, submission));
             } else {
