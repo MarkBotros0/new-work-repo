@@ -10,12 +10,21 @@ INSERT INTO INGESTION_STATUS
 VALUES(3, 'Success', 'mock desc', 3, 1);
 
 -- Add ingestion types
-INSERT INTO INGESTION_TYPE
+INSERT INTO anagrafe_unificata_db.INGESTION_TYPE
 (pk_ingestion_type, name, description, `order`, is_active)
-VALUES(1, 'anagrafe', 'mock desc', 1, 1);
-INSERT INTO INGESTION_TYPE
+VALUES(1, 'soggetti', 'mock desc', 1, 1);
+INSERT INTO anagrafe_unificata_db.INGESTION_TYPE
 (pk_ingestion_type, name, description, `order`, is_active)
-VALUES(2, 'transato', 'mock desc', 2, 1);
+VALUES(2, 'rapporti', 'mock desc', 2, 1);
+INSERT INTO anagrafe_unificata_db.INGESTION_TYPE
+(pk_ingestion_type, name, description, `order`, is_active)
+VALUES(3, 'datiContabili', 'mock desc', 3, 1);
+INSERT INTO anagrafe_unificata_db.INGESTION_TYPE
+(pk_ingestion_type, name, description, `order`, is_active)
+VALUES(4, 'collegamenti', 'mock desc', 4, 1);
+INSERT INTO anagrafe_unificata_db.INGESTION_TYPE
+(pk_ingestion_type, name, description, `order`, is_active)
+VALUES(5, 'cambioNdg', 'mock desc', 5, 1);
 
 -- Add submission status groups
 INSERT INTO SUBMISSION_STATUS_GROUP
