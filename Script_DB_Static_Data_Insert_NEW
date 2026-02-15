@@ -1,0 +1,145 @@
+-- Add ingestion status
+INSERT INTO INGESTION_STATUS
+(pk_ingestion_status, name, description, `order`, is_active)
+VALUES(1, 'Failed', 'mock desc', 1, 1);
+INSERT INTO INGESTION_STATUS
+(pk_ingestion_status, name, description, `order`, is_active)
+VALUES(2, 'Processing', 'mock desc', 2, 1);
+INSERT INTO INGESTION_STATUS
+(pk_ingestion_status, name, description, `order`, is_active)
+VALUES(3, 'Success', 'mock desc', 3, 1);
+
+-- Add ingestion types
+INSERT INTO INGESTION_TYPE
+(pk_ingestion_type, name, description, `order`, is_active)
+VALUES(1, 'anagrafe', 'mock desc', 1, 1);
+INSERT INTO INGESTION_TYPE
+(pk_ingestion_type, name, description, `order`, is_active)
+VALUES(2, 'transato', 'mock desc', 2, 1);
+
+-- Add submission status groups
+INSERT INTO SUBMISSION_STATUS_GROUP
+(pk_submission_status_group, name, description, code, `order`, is_active)
+VALUES(1, 'Ingestion', 'mock desc', '1', 1, 1);
+INSERT INTO SUBMISSION_STATUS_GROUP
+(pk_submission_status_group, name, description, code, `order`, is_active)
+VALUES(2, 'Proccessing', 'mock desc', '2', 2, 1);
+INSERT INTO SUBMISSION_STATUS_GROUP
+(pk_submission_status_group, name, description, code, `order`, is_active)
+VALUES(3, 'Submission', 'mock desc', '3', 3, 1);
+
+-- Add submission status
+INSERT INTO SUBMISSION_STATUS
+(pk_submission_status, name, description, code, `order`, is_active, fk_submission_status_group)
+VALUES(1, 'INGESTION FINISHED', 'mock description', 'ING_OVER', 1, 1, 1);
+INSERT INTO SUBMISSION_STATUS
+(pk_submission_status, name, description, code, `order`, is_active, fk_submission_status_group)
+VALUES(2, 'DATA VALIDATION', 'mock description', 'ING_OVER', 2, 1, 1);
+INSERT INTO SUBMISSION_STATUS
+(pk_submission_status, name, description, code, `order`, is_active, fk_submission_status_group)
+VALUES(3, 'VALIDATION COMPLETED', 'mock description', 'ING_OVER', 3, 1, 1);
+INSERT INTO SUBMISSION_STATUS
+(pk_submission_status, name, description, code, `order`, is_active, fk_submission_status_group)
+VALUES(4, 'CLIENT''S APPROVAL', 'mock description', 'ING_OVER', 4, 1, 1);
+INSERT INTO SUBMISSION_STATUS
+(pk_submission_status, name, description, code, `order`, is_active, fk_submission_status_group)
+VALUES(5, 'PROCESSING', 'mock description', 'ING_OVER', 5, 1, 2);
+INSERT INTO SUBMISSION_STATUS
+(pk_submission_status, name, description, code, `order`, is_active, fk_submission_status_group)
+VALUES(6, 'DELOITTE REVIEW', 'mock description', 'ING_OVER', 6, 1, 2);
+INSERT INTO SUBMISSION_STATUS
+(pk_submission_status, name, description, code, `order`, is_active, fk_submission_status_group)
+VALUES(7, 'CLIENT REVIEW', 'mock description', 'ING_OVER', 7, 1, 2);
+INSERT INTO SUBMISSION_STATUS
+(pk_submission_status, name, description, code, `order`, is_active, fk_submission_status_group)
+VALUES(8, 'PENDING SUBMISSION', 'mock description', 'ING_OVER', 8, 1, 3);
+INSERT INTO SUBMISSION_STATUS
+(pk_submission_status, name, description, code, `order`, is_active, fk_submission_status_group)
+VALUES(9, 'SUBMITTED', 'mock description', 'ING_OVER', 9, 1, 3);
+INSERT INTO SUBMISSION_STATUS
+(pk_submission_status, name, description, code, `order`, is_active, fk_submission_status_group)
+VALUES(10, 'COMPLETED', 'mock description', 'ING_OVER', 10, 1, 3);
+INSERT INTO SUBMISSION_STATUS
+(pk_submission_status, name, description, code, `order`, is_active, fk_submission_status_group)
+VALUES(11, 'CANCELLED', 'mock description', 'ING_OVER', 11, 1, 3);
+INSERT INTO SUBMISSION_STATUS
+(pk_submission_status, name, description, code, `order`, is_active, fk_submission_status_group)
+VALUES(12, 'REJECTED', 'mock description', 'ING_OVER', 12, 1, 3);
+INSERT INTO SUBMISSION_STATUS
+(pk_submission_status, name, description, code, `order`, is_active, fk_submission_status_group)
+VALUES(13, 'ERROR', 'mock description', 'ING_OVER', 13, 1, 3);
+
+-- Add submission types
+INSERT INTO SUBMISSION_TYPE
+(pk_submission_type, name, description, `order`, is_active)
+VALUES(1, 'Submitted', 'mock desc', 1, 1);
+INSERT INTO SUBMISSION_TYPE
+(pk_submission_type, name, description, `order`, is_active)
+VALUES(2, 'Completed', 'mock desc', 2, 1);
+INSERT INTO SUBMISSION_TYPE
+(pk_submission_type, name, description, `order`, is_active)
+VALUES(3, 'Cancelled', 'mock desc', 3, 1);
+
+-- Add Error Types
+INSERT INTO ERROR_TYPE
+(pk_error_type, name, description, serverity_level, is_active, error_code)
+VALUES(1, 'Invalid format', 'Invalid format', 1, 1, 'WRN1');
+INSERT INTO ERROR_TYPE
+(pk_error_type, name, description, serverity_level, is_active, error_code)
+VALUES(2, 'Invalid date format', 'Invalid date format', 1, 1, 'WRN2');
+INSERT INTO ERROR_TYPE
+(pk_error_type, name, description, serverity_level, is_active, error_code)
+VALUES(3, 'Mandatory data is missing', 'Mandatory data is missing', 1, 1, 'WRN3');
+INSERT INTO ERROR_TYPE
+(pk_error_type, name, description, serverity_level, is_active, error_code)
+VALUES(4, 'Invalid value', 'Invalid value', 1, 1, 'WRN4');
+INSERT INTO ERROR_TYPE
+(pk_error_type, name, description, serverity_level, is_active, error_code)
+VALUES(5, 'Foreign Key issue', 'Transaction can''t be created before its merchant and merchant acocunt', 2, 1, 'ERR1');
+INSERT INTO ERROR_TYPE
+(pk_error_type, name, description, serverity_level, is_active, error_code)
+VALUES(6, 'Transaction already exists', 'Transaction can''t be created as it is already existing based on uniqu constrain', 2, 1, 'ERR2');
+INSERT INTO ERROR_TYPE
+(pk_error_type, name, description, serverity_level, is_active, error_code)
+VALUES(7, 'Merchant already exists', 'Merchant can''t be created as it is already existing based on uniqu constrain', 2, 1, 'ERR3');
+
+-- Add periods
+INSERT INTO PERIOD
+(pk_period, name, description, `order`, is_active)
+VALUES(1, 'January', 'January month', 1, 1);
+INSERT INTO PERIOD
+(pk_period, name, description, `order`, is_active)
+VALUES(2, 'February', 'February month', 2, 1);
+INSERT INTO PERIOD
+(pk_period, name, description, `order`, is_active)
+VALUES(3, 'March', 'March month', 3, 1);
+INSERT INTO PERIOD
+(pk_period, name, description, `order`, is_active)
+VALUES(4, 'April', 'April month', 4, 1);
+INSERT INTO PERIOD
+(pk_period, name, description, `order`, is_active)
+VALUES(5, 'May', 'May month', 5, 1);
+INSERT INTO PERIOD
+(pk_period, name, description, `order`, is_active)
+VALUES(6, 'June', 'June month', 6, 1);
+INSERT INTO PERIOD
+(pk_period, name, description, `order`, is_active)
+VALUES(7, 'July', 'July month', 7, 1);
+INSERT INTO PERIOD
+(pk_period, name, description, `order`, is_active)
+VALUES(8, 'August', 'August month', 8, 1);
+INSERT INTO PERIOD
+(pk_period, name, description, `order`, is_active)
+VALUES(9, 'September', 'September month', 9, 1);
+INSERT INTO PERIOD
+(pk_period, name, description, `order`, is_active)
+VALUES(10, 'October', 'October month', 10, 1);
+INSERT INTO PERIOD
+(pk_period, name, description, `order`, is_active)
+VALUES(11, 'November', 'November month', 11, 1);
+INSERT INTO PERIOD
+(pk_period, name, description, `order`, is_active)
+VALUES(12, 'December', 'December month', 12, 1);
+INSERT INTO PERIOD
+(pk_period, name, description, `order`, is_active)
+VALUES(13, 'Y', 'Yearly', 13, 1);

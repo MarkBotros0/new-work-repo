@@ -1,0 +1,289 @@
+# ===================================================================
+# Spring Boot configuration for the "local" profile.
+#
+# This configuration overrides the application.yml file.
+# Used for local development with MySQL database.
+# ===================================================================
+
+# JVM arguments for Java 21 compatibility
+# Add these to your IDE run configuration or Maven command
+# --add-opens java.base/java.lang=ALL-UNNAMED
+# --add-opens java.base/java.util=ALL-UNNAMED
+
+# ===================================================================
+# Standard Spring Boot properties.
+# Full reference is available at:
+# http://docs.spring.io/spring-boot/docs/current/reference/html/common-application-properties.html
+# ===================================================================
+
+fe-url: ${FE_BASE_URL}
+user-role: ${USER_ROLE}
+
+logging:
+    #    config: file:logback-spring.xml
+    config: classpath:logback-spring.xml
+    # App Runner logging: INFO level to reduce log volume (WARN/ERROR still visible)
+    # SQL logs disabled to avoid log noise in production environment
+    level:
+        root: INFO
+        it.deloitte.postrxade: INFO  # INFO level - statistics and important events
+        it.deloitte.postrxade.parser.transaction: WARN  # Only warnings/errors for parsing details
+        it.deloitte.postrxade.service.impl.ObligationServiceImpl: INFO  # Keep statistics visible
+        org.hibernate.SQL: WARN  # Disable SQL query logging in App Runner (too verbose)
+        org.hibernate.type.descriptor.sql.BasicBinder: WARN  # Disable SQL parameter binding logs in App Runner
+
+management:
+    endpoints:
+        web:
+            base-path: /private-monitor
+            exposure:
+                include: ['configprops', 'env', 'health', 'info', 'logfile', 'loggers', 'prometheus', 'threaddump', 'caches']
+    endpoint:
+        health:
+            show-details: always
+            probes:
+                enabled: true
+    health:
+        group:
+            liveness:
+                include: livenessState
+            readiness:
+                include: readinessState
+
+spring:
+    application:
+        name: pos-trx-ade
+
+
+    datasource:
+        type: com.zaxxer.hikari.HikariDataSource
+        # MySQL AWS RDS Database for local development db-pos-nprod.c1ocgkekaqhr.eu-central-1.rds.amazonaws.com
+        url: jdbc:mysql://db-pos-nprod.c1ocgkekaqhr.eu-central-1.rds.amazonaws.com:3306/posappdb?useSSL=true&serverTimezone=UTC&allowPublicKeyRetrieval=true&autoReconnect=true&failOverReadOnly=false&maxReconnects=3&connectTimeout=10000&socketTimeout=300000
+        username: posappusr
+        password: GNEMOBY
+        driverClassName: com.mysql.cj.jdbc.Driver
+        hikari:
+            poolName: Hikari
+            auto-commit: false
+            # Pool size configuration - critical for batch processing
+            maximum-pool-size: 10  # Max connections (default is 10, but making it explicit)
+            minimum-idle: 2        # Reduced to allow more flexibility during high load
+            connection-timeout: 30000  # 30 seconds to wait for connection
+            idle-timeout: 120000   # 2 minutes before idle connection is removed
+            max-lifetime: 600000   # 10 minutes max lifetime (shorter to avoid stale connections)
+            # Leak detection: 5 minutes for bulk operations (staging can take longer)
+            leak-detection-threshold: 300000  # Log warning if connection held > 1 minute
+            # Connection validation - CRITICAL for detecting dead connections
+            validation-timeout: 5000  # 5 seconds to validate a connection
+            keepalive-time: 60000  # Send keepalive every 60 seconds to prevent RDS timeout
+            data-source-properties:
+                cachePrepStmts: true
+                prepStmtCacheSize: 250
+                prepStmtCacheSqlLimit: 2048
+                useServerPrepStmts: true
+
+    jpa:
+        open-in-view: false
+        show-sql: false  # Disabled to reduce log noise - SQL logs controlled via logging.level.org.hibernate.SQL
+        hibernate:
+            ddl-auto: validate
+            naming:
+                physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+                implicit-strategy: org.hibernate.boot.model.naming.ImplicitNamingStrategyLegacyJpaImpl
+        properties:
+            hibernate.dialect: org.hibernate.dialect.MySQL8Dialect
+            hibernate.default_schema: posappdb
+            hibernate.jdbc.time_zone: UTC
+            hibernate.id.new_generator_mappings: true
+            hibernate.globally_quoted_identifiers: true
+            hibernate.connection.provider_disables_autocommit: true
+            hibernate.cache.use_second_level_cache: false
+            hibernate.cache.use_query_cache: false
+            hibernate.format_sql: true
+            hibernate.generate_statistics: false
+            hibernate.jdbc.batch_size: 25
+            hibernate.order_inserts: true
+            hibernate.order_updates: true
+            hibernate.jdbc.fetch_size: 150
+            hibernate.criteria.literal_handling_mode: BIND
+            hibernate.query.fail_on_pagination_over_collection_fetch: true
+            hibernate.query.in_clause_parameter_padding: true
+            hibernate.hbm2ddl.auto: validate
+            hibernate.hbm2ddl.import_files: /sql/schema.sql
+
+    jmx:
+        enabled: false
+
+    main:
+        allow-bean-definition-overriding: true
+        banner-mode: 'off'
+
+    messages:
+        basename: i18n/messages
+
+    mvc:
+        favicon:
+            enabled: false
+
+    security:
+        oauth2:
+            client:
+                provider:
+                    oidc:
+                        authorization-uri: https://intapi.nexi.it/ics/nexiauth/openid/authorize
+                        token-uri: https://intapi.nexi.it/ics/nexiauth/openid/token
+                        jwk-set-uri: https://intapi.nexi.it/nexi/.well-known/jwks.json
+                    oidc-azure:
+                        authorization-uri: https://login.microsoftonline.com/${AZURE_TENANT_ID}/oauth2/v2.0/authorize
+                        token-uri: https://login.microsoftonline.com/${AZURE_TENANT_ID}/oauth2/v2.0/token
+                        jwk-set-uri: https://login.microsoftonline.com/${AZURE_TENANT_ID}/discovery/v2.0/keys
+
+                registration:
+                    oidc:
+                        client-id: ccb6b077-3d4f-448e-91c5-b8e504fe3a09
+                        client-secret: a44f5504-7544-4bcf-9ba3-415454dcdc56
+                        scope: openid,profile
+                        redirect-uri: ${BE_BASE_URL}/api/login/oauth2/code/oidc
+                        client-authentication-method: client_secret_post
+                        authorization-grant-type: authorization_code
+                    oidc-azure:
+                        provider: oidc-azure
+                        client-id: ${AZURE_CLIENT_ID}
+                        client-secret: ${AZURE_CLIENT_SECRET}
+                        scope: openid,profile
+                        redirect-uri: ${BE_BASE_URL}/api/login/oauth2/code/oidc-azure
+                        client-authentication-method: post
+                        authorization-grant-type: authorization_code
+
+    session:
+        store-type: jdbc
+        jdbc:
+            table-name: SPRING_SESSION
+            initialize-schema: always
+
+    task:
+        execution:
+            thread-name-prefix: pos-task-
+            pool:
+                core-size: 2
+                max-size: 50
+                queue-capacity: 10000
+        scheduling:
+            thread-name-prefix: pos-scheduling-
+            pool:
+                size: 2
+
+    thymeleaf:
+        mode: HTML
+
+    output:
+        ansi:
+            console-available: true
+    servlet:
+        multipart:
+            enabled: true
+            file-size-threshold: 2KB
+            max-file-size: 200MB
+            max-request-size: 215MB
+    docker:
+        compose:
+            enabled: false
+
+# AWS S3 Configuration (uses IAM Role)
+aws:
+  s3:
+    bucket-name: ${S3_BUCKET_NAME}
+    region: ${S3_BUCKET_REGION}
+    output-folder: ${S3_BUCKET_OUTPUT_FOLDER}
+    input-folder: ${S3_BUCKET_INPUT_FOLDER}
+    input-folder-loaded: ${S3_BUCKET_INPUT_FOLDER_LOADED}
+    # H2 Database for development (commented out)
+    # url: jdbc:h2:mem:posdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    # username: sa
+    # password: 
+    # driverClassName: org.h2.Driver
+
+springdoc:
+    api-docs:
+        path: /api/docs/api-docs
+    swagger-ui:
+        path: /api/docs/index.html
+        operations-sorter: alpha
+
+server:
+    compression:
+        enabled: true
+        mime-types: text/html,text/xml,text/plain,text/css,application/javascript,application/json
+        min-response-size: 1024
+    error:
+        include-message: always
+    port: 8080
+    servlet:
+        session:
+            cookie:
+                http-only: true
+                same-site: none
+                secure: true
+            timeout: 3600
+
+# ===================================================================
+# Application specific properties
+# ===================================================================
+application:
+    authority:
+        info-env: 'INT'
+    # Ingestion configuration
+    ingestion:
+        # Use staging tables for high-performance ETL ingestion (recommended for large files)
+        # Set to false to use legacy row-by-row approach
+        use-staging: true
+    http:
+        header-name: ${spring.application.name}
+    cors:
+        allowed-origins: 'http://localhost:8080,http://localhost:3000,http://localhost:4200,http://localhost:8082,${FE_BASE_URL},${BE_BASE_URL}'
+        allowed-methods: 'GET,POST,PUT,DELETE,OPTIONS'
+        allowed-headers: '*'
+        exposed-headers: 'Authorization,Link,X-Total-Count,X-${application.http.header-name}-alert,X-${application.http.header-name}-error,X-${application.http.header-name}-params'
+        allow-credentials: true
+        max-age: 1800
+    rest:
+        tracing-request:
+            enabled: true
+    security:
+        lambda-token: "my-secret-test-token-123"
+        xsfr:
+            enabled: true
+            cookie-path: /
+        private-key-pem: |-
+            -----BEGIN PRIVATE KEY-----
+            MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC6nCoDhzUyhGwP
+            L5DxKGOJ0C12dxxh2FO6XQsWc0lZhDvaVi0yrhkT3AZdKFcWaWaocNPNe+5tZHju
+            D1awuoorX1wqZTYGCnDxhDUAFYitZmb8bIs9uJEF6v25QcP8FEzuYqtt06g8XUwG
+            seB0WiqNyZg3dNKX5h2Y7olNE69k70NFkBs91r9tJ4a3gj5m/p9ZcuzqIufv2r6K
+            1xcYBkUmCc4qZiHvilYcXolP5q143rUccwbjSbifRS4LZHkU+pPGVFLr2raOlLX1
+            DDPQHnvEZrmx1LdLFG/eqe/4/SAUYndkpwo8fmGKu+azLu5qdmGHjyJ6+/PYRQ1N
+            sRy7bVrRAgMBAAECggEAERiFcNVONlaTX8DH0pAUrmd4AsZev0gGQ6iKf4AIVD8d
+            DJ+gfGgevAcIPjiX4eG+GehcPxL/gN4Xhhe5pW8xgU+3Ldsf2+XQ+w9Vm7BdWSVs
+            geufxgPGpXglzncL8WgatCwt8F3Xp9AUSvi4y3AHPf4eB9aYBHp8c6pGwdzv0JtC
+            hNV6pQks77L5w7jMDsgiUDtE20Z+CLhrVynvpE6JaG7M4tIAt+5yfpA8C8gYUt/j
+            1TyGnTh4CVBmr/CpAwfdckEonRIiEMCKD+aYVBj9yTlhNbcIybRCfHcEGPbSH104
+            nloa0C+nwgQgppYGnhcmARHunzbW/rm9HgJ+T0daUQKBgQD2VjUZNsucejoPD6Oq
+            QyYTzr4xm3agoNybQaqnyTYxJYpmz/oPKkZroZSfFHaBS9QM1N6mdx68O1CmBouI
+            +TeYEgkFCRFuJoTHcSYoS6NY5nGGgLK0Z4Emt8votPdEWs1vM4snPchmBeqo6+Ar
+            /RLRcxOAz44Vh8aC+yt828RuPwKBgQDB7ilmNJa8PR802sFsa0ylG/Mbj65wna7/
+            qHVP1JqfN5PQWECaG24cEUVIt8Po2fklPzULPfy2Y0EcC1szJiDEWtA2mHqGMbcf
+            yUkgYXYcHvlcKcnmNF9t9drDjpnERBlhwBY1ceZAWdfHeDo95xajry1cYFLTrGQc
+            fzk0AjYS7wKBgA6tilJrSmyTd9wn4WemwqERg5GvIr1leF+j5QhEW/9Hrlx77flz
+            WmjVYuarsHf5zbPKB05B8MnkeuS5pRzPRLnB8Vmkda5riyPbIRvrjdshOAh8qKlJ
+            NY/aCcNe7RDcnDsRBiybaNJzbc0M6PmWBcYHJlVZiKzNv01Uq/2vlp+/AoGAX7G4
+            5gEfPGXgx0EG3wwXdwXSsY/14QY+O1OSB8F+RwCyxMU3o5PTgrAXAyoC1xzwLywA
+            bbq5v/o8P61u5E91Lc8uHTKiiyNvHJVDq2HMWVYDcDICucCwMl92AreUMt/zsmOJ
+            0feRScHLk1dFThSA/GZNuN6jIGZZxCIXRQ2uRysCgYEA2XFRGwsOVgJQSMrLc3zc
+            pVpKlugiADGasKim/KfyAj29LnTrDyPvgVivRBzCBCY6kHgQ39pAlfozDRqGRr2P
+            E6FAqXUKt+r3u/fF5y7nm6SGkJH2hT9Fs1zUQct+42WjqksEuBXZzdUnfxrRygGg
+            OCLY7mHu50VgOiVcmv4sick=
+            -----END PRIVATE KEY-----
+        private-key-password: 8Qgy!ZVc
+
+# Docker Compose disabled - using external MySQL database
+# Alternative: Set system property -Dspring.docker.compose.enabled=false

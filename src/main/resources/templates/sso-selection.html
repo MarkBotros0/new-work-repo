@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="it" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in to Deloitte</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Open Sans', Arial, sans-serif;
+            background-color: #f3f3f3; /* Neutral light background */
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .login-card {
+            background: white;
+            border: 2px solid #43b02a;
+            padding: 50px 40px;
+            width: 100%;
+            max-width: 450px;
+            text-align: left;
+        }
+
+        .logo-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+            width: 100%;
+        }
+
+        .deloitte-logo {
+            width: 240px;
+            height: auto;
+            display: block;
+        }
+        .instruction-text {
+            color: #333;
+            font-size: 18px;
+            margin-bottom: 25px;
+            font-weight: 400;
+        }
+
+        .sso-options {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .sso-button {
+            display: block;
+            width: 100%;
+            padding: 18px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            font-size: 18px;
+            text-align: center;
+            color: white;
+            background-color: #62bcd4; /* Specific cyan-blue from image */
+            transition: background-color 0.2s ease;
+        }
+
+        .sso-button:hover {
+            background-color: #51a9c0; /* Slightly darker on hover */
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="login-card">
+    <div class="logo-container">
+        <img th:src="@{/deloitte-logo.png}" alt="Deloitte" class="deloitte-logo">
+    </div>
+
+    <p class="instruction-text">Sign in with your corporate ID</p>
+
+    <div class="sso-options">
+        <a href="/api/authorization/oidc?provider=nexiauth" class="sso-button">
+            Nexi
+        </a>
+
+        <a href="/api/authorization/oidc-azure" class="sso-button">
+            Deloitte
+        </a>
+    </div>
+</div>
+
+</body>
+</html>

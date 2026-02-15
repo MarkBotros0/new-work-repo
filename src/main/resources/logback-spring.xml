@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE configuration>
+<configuration scan="true">
+
+	<!-- La configurazione di default abilita il log su console con un pattern predefinito (default) -->
+	<!-- <include resource="org/springframework/boot/logging/logback/base.xml" /> -->
+	<!-- <include resource="org/springframework/boot/logging/logback/defaults.xml" /> -->
+
+	<property name="LOG_PATTERN_DEFAULT" value="[%date{ISO8601}][%-5level][%thread][%logger::%method][%msg]%n" />
+	<timestamp key="START_TIME" datePattern="yyyyMMdd-HHmmss" timeReference="contextBirth" />
+
+	<!-- Equivalent ansible property/variable -->
+	<property name="springapp_name" value="pos-trx-ade" />
+
+	<!-- <property name="LOG_FILE" value="${HOME}/logs/{{springapp_name}}"/> -->
+	<property name="LOG_FILE" value="log/${springapp_name}"/>
+
+	<!-- <property name="CONSOLE_LOG_PATTERN" value="${PID}: %-5level [%thread] %logger{0} - %msg%n" /> -->
+	<property name="CONSOLE_LOG_PATTERN" value="${LOG_PATTERN_DEFAULT}" />
+
+	<!-- <property name="LOG_SERVICE_LOG_PATTERN" value="%d|%5p|%X{serviceName}|%X{methodName}|%X{sessionId}|%X{requestId}|%X{traceId}|%X{spanId}|%X{application}|%X{channel}|%X{user}|%X{companyGroup}|%replace(%msg){'\b([0]*)(([245]){1}\d{5})(\d{2})(\d{4})(\d{4})\b','$1$2******$6'}%n" /> -->
+	<property name="LOG_SERVICE_LOG_PATTERN" value="${LOG_PATTERN_DEFAULT}" />
+
+	<!-- <property name="LOG_ERROR_LOG_PATTERN" value="%d|%5p|%X{serviceName}|%X{methodName}|%X{sessionId}|%X{requestId}|%X{traceId}|%X{spanId}|%X{application}|%X{channel}|%X{user}|%X{companyGroup}|%replace(%msg){'\b([0]*)(([245]){1}\d{5})(\d{2})(\d{4})(\d{4})\b','$1$2******$6'}%n" /> -->
+	<property name="LOG_ERROR_LOG_PATTERN" value="${LOG_PATTERN_DEFAULT}" />
+
+	<property name="MAIL_LOG_PATTERN" value="%d{HH:mm:ss.SSS} %-55(%X{user} %level [%thread] %logger{20}) - %msg%n" />
+
+	<!--APPENDER CONFIGURATION FOR CONSOLE LOGGING -->
+	<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder>
+			<pattern>${CONSOLE_LOG_PATTERN}</pattern>
+		</encoder>
+	</appender>
+
+	<!-- APPENDERS DEFINITION -->
+	<appender name="LOG_SERVICE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+		<file>${LOG_FILE}.log</file>
+		<rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+			<!-- daily rollover -->
+			<fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+			<maxFileSize>100MB</maxFileSize>
+			<maxHistory>180</maxHistory>
+			<totalSizeCap>10GB</totalSizeCap>
+		</rollingPolicy>
+		<encoder>
+			<pattern>${LOG_SERVICE_LOG_PATTERN}</pattern>
+		</encoder>
+	</appender>
+
+	<appender name="LOG_ERROR" class="ch.qos.logback.core.rolling.RollingFileAppender">
+		<file>${LOG_FILE}-error.log</file>
+		<rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+			<!-- daily rollover -->
+			<fileNamePattern>${LOG_FILE}-error.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+			<maxFileSize>100MB</maxFileSize>
+			<maxHistory>180</maxHistory>
+			<totalSizeCap>10GB</totalSizeCap>
+		</rollingPolicy>
+		<filter class="ch.qos.logback.classic.filter.LevelFilter">
+			<level>ERROR</level>
+			<onMatch>ACCEPT</onMatch>
+			<onMismatch>DENY</onMismatch>
+		</filter>
+		<encoder>
+			<pattern>${LOG_ERROR_LOG_PATTERN}</pattern>
+		</encoder>
+	</appender>
+
+	<!--START ASYNC APPENDERS DEFINITION -->
+	<appender name="ASYNC_DEFAULT_FILE" class="ch.qos.logback.classic.AsyncAppender">
+		<appender-ref ref="CONSOLE" />
+	</appender>
+	<!--START ASYNC APPENDERS DEFINITION -->
+	<appender name="ASYNC_LOG_SERVICE" class="ch.qos.logback.classic.AsyncAppender">
+		<appender-ref ref="LOG_SERVICE" />
+	</appender>
+	<appender name="ASYNC_LOG_ERROR" class="ch.qos.logback.classic.AsyncAppender">
+		<appender-ref ref="LOG_ERROR" />
+	</appender>
+	<!--END ASYNC APPENDERS DEFINITION -->
+
+	<!--START LOCAL CONFIGURATION -->
+	<springProfile name="local">
+		<!-- <logger name="it.deloitte" level="DEBUG" additivity="false" >
+			<appender-ref ref="ASYNC_LOG_SERVICE" />
+		</logger>
+		<logger name="it.deloitte" level="ERROR" additivity="false" >
+			<appender-ref ref="ASYNC_LOG_ERROR" />
+		</logger> -->
+	</springProfile>
+	<!-- END LOCAL CONFIGURATION -->
+
+	<!--START DEV CONFIGURATION -->
+	<springProfile name="dev">
+		<!-- Logging levels are configured in application-dev.yml -->
+		<!-- This allows flexible configuration via YAML without hardcoding levels here -->
+		<!-- <logger name="it.deloitte" level="DEBUG" additivity="false" >
+			<appender-ref ref="ASYNC_LOG_SERVICE" />
+		</logger>
+		<logger name="it.deloitte" level="ERROR" additivity="false" >
+			<appender-ref ref="ASYNC_LOG_ERROR" />
+		</logger> -->
+	</springProfile>
+	<!-- END DEV CONFIGURATION -->
+
+	<!--START INT CONFIGURATION -->
+	<springProfile name="int">
+		<logger name="it.deloitte" level="DEBUG" additivity="false" >
+			<appender-ref ref="ASYNC_LOG_SERVICE" />
+		</logger>
+		<logger name="it.deloitte" level="ERROR" additivity="false" >
+			<appender-ref ref="ASYNC_LOG_ERROR" />
+		</logger>
+	</springProfile>
+	<!-- END INT CONFIGURATION -->
+
+	<!-- START STAGING CONFIGURATION -->
+	<springProfile name="stg|staging">
+		<logger name="it.deloitte" level="DEBUG" additivity="false" >
+			<appender-ref ref="ASYNC_LOG_SERVICE" />
+		</logger>
+		<logger name="it.deloitte" level="ERROR" additivity="false" >
+			<appender-ref ref="ASYNC_LOG_ERROR" />
+		</logger>
+	</springProfile>
+	<!-- END STAGE CONFIGURATION -->
+
+	<!-- START PRODUCTION CONFIGURATION -->
+	<springProfile name="prod|production">
+		<logger name="it.deloitte" level="DEBUG" additivity="false" >
+			<appender-ref ref="ASYNC_LOG_SERVICE" />
+		</logger>
+		<logger name="it.deloitte" level="ERROR" additivity="false" >
+			<appender-ref ref="ASYNC_LOG_ERROR" />
+		</logger>
+	</springProfile>
+	<!-- END PRODUCTION CONFIGURATION -->
+
+	<!-- Root level: can be overridden by application.yml logging.level.root -->
+	<root level="INFO">
+		<appender-ref ref="CONSOLE" />
+		<appender-ref ref="ASYNC_LOG_SERVICE" />
+	</root>
+
+	<!-- Logger levels: can be overridden by application.yml logging.level.* -->
+	<!-- For dev profile, levels are configured in application-dev.yml -->
+	<!-- For other profiles, these defaults apply unless overridden in YAML -->
+	<springProfile name="!dev">
+		<logger name="it.deloitte.postrxade" level="debug" />
+	</springProfile>
+	<logger name="it.deloitte.postrxade.config.LoggingRequestInterceptor" level="debug" />
+
+	<logger name="ch.qos.logback" level="warn" />
+	<logger name="com.codahale.metrics" level="warn" />
+	<logger name="com.netflix" level="warn" />
+	<logger name="com.netflix.discovery" level="info" />
+	<logger name="com.ryantenney" level="warn" />
+	<logger name="com.sun" level="warn" />
+	<logger name="com.zaxxer" level="info" />
+	<logger name="io.undertow" level="warn" />
+	<logger name="io.undertow.websockets.jsr" level="error" />
+	<logger name="javax.activation" level="warn" />
+	<logger name="javax.mail" level="warn" />
+	<logger name="javax.xml.bind" level="warn" />
+	<logger name="liquibase" level="debug" />
+	<logger name="liquibaseschemaresolver" level="debug" />
+	<logger name="ma.glasnost.orika" level="debug" />
+
+	<logger name="org" level="debug" />
+	<logger name="org.apache" level="warn" />
+	<logger name="org.apache.catalina.authenticator" level="info" />
+	<logger name="org.apache.catalina.session.managerbase" level="info" />
+	<logger name="org.apache.catalina.startup.digesterfactory" level="off" />
+	<logger name="org.apache.commons.net" level="info" />
+	<logger name="org.apache.jasper.compiler" level="info" />
+	<logger name="org.apache.tomcat.util.digester.digester" level="info" />
+	<logger name="org.bson" level="warn" />
+	<logger name="org.ehcache" level="warn" />
+
+	<!-- Hibernate SQL logging: Disabled for dev profile (too verbose), enabled for local -->
+	<springProfile name="local">
+		<logger name="org.hibernate.SQL" level="DEBUG" />
+		<logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE" />
+		<logger name="org.hibernate" level="debug" />
+	</springProfile>
+	<springProfile name="!local">
+		<!-- SQL logging disabled in dev/prod - configured via application.yml -->
+		<logger name="org.hibernate.SQL" level="WARN" />
+		<logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="WARN" />
+		<logger name="org.hibernate" level="info" />
+	</springProfile>
+	<logger name="org.hibernate.internal.util.EntityPrinter" level="info" />
+
+	<logger name="org.springframework" level="debug" />
+	<logger name="org.springframework.beans.factory.support.DefaultListableBeanFactory" level="info" />
+	<logger name="org.springframework.boot.actuate.audit.listener.AuditListener" level="debug" />
+	<logger name="org.springframework.boot.actuate.endpoint.jmx.JmxEndpointExporter" level="debug" />
+	<logger name="org.springframework.boot.actuate.endpoint.web.servlet.WebMvcEndpointHandlerMapping" level="debug" />
+	<logger name="org.springframework.boot.autoconfigure.logging.AutoConfigurationReportLoggingInitializer" level="info" />
+	<logger name="org.springframework.boot.autoconfigure.security.oauth2.resource.UserInfoTokenServices" level="info" />
+	<logger name="org.springframework.context.annotation.CommonAnnotationBeanPostProcessor" level="debug" />
+	<logger name="org.springframework.core.env.PropertySourcesPropertyResolver" level="info" />
+	<logger name="org.springframework.core.io.support.PathMatchingResourcePatternResolver" level="debug" />
+	<logger name="org.springframework.jdbc.core.JdbcTemplate" level="debug" />
+	<logger name="org.springframework.jndi.JndiLocatorDelegate" level="info" />
+	<logger name="org.springframework.jndi.JndiPropertySource" level="info" />
+	<logger name="org.springframework.jndi.JndiTemplate" level="info" />
+	<logger name="org.springframework.orm.jpa.EntityManagerFactoryUtils" level="debug" />
+	<logger name="org.springframework.orm.jpa.JpaTransactionManager" level="debug" />
+	<logger name="org.springframework.security.access.vote.AffirmativeBased" level="debug" />
+	<logger name="org.springframework.security.oauth2.client.OAuth2RestTemplate" level="debug" />
+	<logger name="org.springframework.security.oauth2.client.filter.OAuth2ClientAuthenticationProcessingFilter" level="debug" />
+	<logger name="org.springframework.security.oauth2.client.token.grant.code.AuthorizationCodeAccessTokenProvider" level="debug" />
+	<logger name="org.springframework.security.web.access.ExceptionTranslationFilter" level="info" />
+	<logger name="org.springframework.security.web.access.intercept.FilterSecurityInterceptor" level="debug" />
+	<logger name="org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler" level="debug" />
+	<logger name="org.springframework.security.web.authentication.session.ChangeSessionIdAuthenticationStrategy" level="debug" />
+	<logger name="org.springframework.security.web.context.HttpSessionSecurityContextRepository" level="debug" />
+	<logger name="org.springframework.security.web.csrf.CsrfFilter" level="debug" />
+	<logger name="org.springframework.security.web.FilterChainProxy" level="debug" />
+	<logger name="org.springframework.security.web.session" level="debug" />
+	<logger name="org.springframework.security.web.session.ConcurrentSessionFilter" level="debug" />
+	<logger name="org.springframework.security.web.session.SimpleRedirectSessionInformationExpiredStrategy" level="debug" />
+	<logger name="org.springframework.security.web.util.matcher.AntPathRequestMatcher" level="debug" />
+	<logger name="org.springframework.security.web.util.matcher.OrRequestMatcher" level="debug" />
+	<logger name="org.springframework.session" level="debug" />
+	<logger name="org.springframework.session.jdbc.JdbcIndexedSessionRepository" level="debug" />
+	<logger name="org.springframework.session.web.http.SessionRepositoryFilter" level="debug" />
+	<logger name="org.springframework.web.client.RestTemplate" level="debug" />
+	<logger name="org.springframework.web.servlet.DispatcherServlet" level="debug" />
+	<logger name="org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver" level="debug" />
+	<logger name="org.springframework.web.servlet.mvc.method.annotation.HttpEntityMethodProcessor" level="debug" />
+	<logger name="org.springframework.web.servlet.mvc.method.annotation.RequestResponseBodyMethodProcessor" level="debug" />
+
+	<logger name="org.thymeleaf" level="warn" />
+	<logger name="org.zalando" level="debug" />
+	<logger name="org.xnio" level="warn" />
+	<logger name="springfox" level="warn" />
+	<logger name="sun.rmi" level="warn" />
+	<logger name="sun.rmi.transport" level="warn" />
+
+</configuration>

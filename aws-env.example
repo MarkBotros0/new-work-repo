@@ -1,0 +1,33 @@
+# AWS RDS/Aurora Environment Variables
+# Copy this file to aws-env and update with your actual values
+
+# Spring Profile
+SPRING_PROFILES_ACTIVE=aws
+
+# Database Configuration
+DB_HOST=your-rds-endpoint.region.rds.amazonaws.com
+DB_PORT=3306
+DB_NAME=postrxade
+DB_USERNAME=posuser
+DB_PASSWORD=your-secure-password
+
+# Connection Pool Settings
+DB_MAX_POOL_SIZE=20
+DB_MIN_IDLE=5
+
+# OAuth2 Configuration
+OAUTH2_AUTHORIZATION_URI=https://your-auth-server.com/oauth2/authorize
+OAUTH2_TOKEN_URI=https://your-auth-server.com/oauth2/token
+OAUTH2_JWK_SET_URI=https://your-auth-server.com/.well-known/jwks.json
+OAUTH2_CLIENT_ID=pos-trx-ade-client
+OAUTH2_CLIENT_SECRET=your-client-secret
+OAUTH2_REDIRECT_URI=https://your-app.com/api/login/oauth2/code/oidc
+
+# CORS Configuration
+CORS_ALLOWED_ORIGINS=https://your-frontend.com,https://your-admin.com
+
+# Application Configuration
+APPLICATION_AUTHORITY_INFO_ENV=AWS
+APPLICATION_HTTP_HEADER_NAME=pos-trx-ade
+APPLICATION_REST_TRACING_REQUEST_ENABLED=false
+APPLICATION_SECURITY_XSFR_ENABLED=true

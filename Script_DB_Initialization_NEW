@@ -1,0 +1,609 @@
+CREATE DATABASE anagrafe_unificata_db;
+
+CREATE USER anagrafeappusr IDENTIFIED BY 'GNEMOBY';
+GRANT SELECT, INSERT, UPDATE, DELETE ON * TO anagrafeappusr;
+GRANT LOCK TABLES ON * TO anagrafeappusr;
+
+CREATE TABLE `SPRING_SESSION` (
+  `PRIMARY_ID` char(36) NOT NULL,
+  `SESSION_ID` char(36) NOT NULL,
+  `CREATION_TIME` bigint NOT NULL,
+  `LAST_ACCESS_TIME` bigint NOT NULL,
+  `MAX_INACTIVE_INTERVAL` int NOT NULL,
+  `EXPIRY_TIME` bigint NOT NULL,
+  `PRINCIPAL_NAME` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`PRIMARY_ID`),
+  UNIQUE KEY `SPRING_SESSION_IX1` (`SESSION_ID`),
+  KEY `SPRING_SESSION_IX2` (`EXPIRY_TIME`),
+  KEY `SPRING_SESSION_IX3` (`PRINCIPAL_NAME`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci ROW_FORMAT=DYNAMIC;
+
+CREATE TABLE `SPRING_SESSION_ATTRIBUTES` (
+  `SESSION_PRIMARY_ID` char(36) NOT NULL,
+  `ATTRIBUTE_NAME` varchar(200) NOT NULL,
+  `ATTRIBUTE_BYTES` blob NOT NULL,
+  PRIMARY KEY (`SESSION_PRIMARY_ID`,`ATTRIBUTE_NAME`),
+  CONSTRAINT `SPRING_SESSION_ATTRIBUTES_FK` FOREIGN KEY (`SESSION_PRIMARY_ID`) REFERENCES `SPRING_SESSION` (`PRIMARY_ID`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci ROW_FORMAT=DYNAMIC;
+
+CREATE TABLE `USER` (
+  `pk_user` VARCHAR(50) PRIMARY KEY,
+  `first_name` VARCHAR(255),
+  `last_name` VARCHAR(255),
+  `email` VARCHAR(255),
+  `company` VARCHAR(255),
+  `office` VARCHAR(255),
+  `last_logged_in` DATETIME
+) ENGINE=InnoDB;
+
+CREATE TABLE `AUTHORITY` (
+  `pk_authority` VARCHAR(50) PRIMARY KEY,
+  `description` VARCHAR(255)
+) ENGINE=InnoDB;
+
+CREATE TABLE `USER_AUTHORITY` (
+  `fk_user` VARCHAR(50),
+  `fk_authority` VARCHAR(50),
+  PRIMARY KEY (`fk_user`, `fk_authority`),
+  FOREIGN KEY (`fk_user`) REFERENCES `USER`(`pk_user`),
+  FOREIGN KEY (`fk_authority`) REFERENCES `AUTHORITY`(`pk_authority`)
+) ENGINE=InnoDB;
+
+CREATE TABLE `PERIOD` (
+  `pk_period` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `name` VARCHAR(50),
+  `description` VARCHAR(255),
+  `order` INT,
+  `is_active` BOOLEAN
+) ENGINE=InnoDB;
+
+CREATE TABLE `OBLIGATION` (
+  `pk_obligation` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `fk_period` BIGINT,
+  `fiscalYear` INT,
+  FOREIGN KEY (`fk_period`) REFERENCES `PERIOD`(`pk_period`)
+) ENGINE=InnoDB;
+
+CREATE TABLE `SUBMISSION_TYPE` (
+  `pk_submission_type` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `name` VARCHAR(255),
+  `description` VARCHAR(255),
+  `order` INT,
+  `is_active` BOOLEAN
+) ENGINE=InnoDB;
+
+create table SUBMISSION_STATUS_GROUP (
+    pk_submission_status_group bigint not null auto_increment,
+    name varchar(255),
+    description varchar(255),
+    code varchar(255),
+    `order` integer,
+    is_active bit,
+    primary key (pk_submission_status_group)
+);
+
+CREATE TABLE `SUBMISSION_STATUS` (
+  `pk_submission_status` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `fk_submission_status_group` BIGINT,
+  `name` VARCHAR(255),
+  `description` VARCHAR(255),
+  `code` VARCHAR(255),
+  `order` INT,
+  `is_active` BOOLEAN,
+  FOREIGN KEY (`fk_submission_status_group`) REFERENCES `SUBMISSION_STATUS_GROUP`(`pk_submission_status_group`)
+) ENGINE=InnoDB;
+
+CREATE TABLE `SUBMISSION` (
+  `pk_submission` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `fk_current_submission_status` BIGINT,
+  `fk_last_update_by` VARCHAR(50),
+  `fk_obligation` BIGINT,
+  `fk_submission_type` BIGINT,
+  `last_updated_at` DATETIME,
+  `approved_at` DATETIME,
+  `deadline_date` DATE,
+  `batch_id` VARCHAR(100),
+  `is_manual` BOOLEAN,
+  `fk_lastStatusBeforeCancel` BIGINT,
+  `cancelled_at` DATETIME,
+  FOREIGN KEY (`fk_current_submission_status`) REFERENCES `SUBMISSION_STATUS`(`pk_submission_status`),
+  FOREIGN KEY (`fk_last_update_by`) REFERENCES `USER`(`pk_user`),
+  FOREIGN KEY (`fk_submission_type`) REFERENCES `SUBMISSION_TYPE`(`pk_submission_type`),
+  FOREIGN KEY (`fk_obligation`) REFERENCES `OBLIGATION`(`pk_obligation`),
+  FOREIGN KEY (`fk_lastStatusBeforeCancel`) REFERENCES `SUBMISSION_STATUS`(`pk_submission_status`)
+) ENGINE=InnoDB;
+
+CREATE TABLE `INGESTION_TYPE` (
+  `pk_ingestion_type` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `name` VARCHAR(255),
+  `description` VARCHAR(255),
+  `order` INT,
+  `is_active` BOOLEAN
+) ENGINE=InnoDB;
+
+CREATE TABLE `INGESTION_STATUS` (
+  `pk_ingestion_status` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `name` VARCHAR(255),
+  `description` VARCHAR(255),
+  `order` INT,
+  `is_active` BOOLEAN
+) ENGINE=InnoDB;
+
+CREATE TABLE `INGESTION_ERROR` (
+  `pk_ingestion_error` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `name` VARCHAR(255),
+  `description` VARCHAR(255),
+  `order` INT,
+  `is_active` BOOLEAN
+) ENGINE=InnoDB;
+
+CREATE TABLE `INGESTION` (
+  `pk_ingestion` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `fk_ingestion_type` BIGINT,
+  `fk_ingestion_status` BIGINT,
+  `fk_submission` BIGINT,
+  `fk_ingestion_error` BIGINT,
+  `ingested_at` DATETIME,
+  `full_path` VARCHAR(255) COMMENT 'Full path on bucket S3 or remote folder where this file originated from',
+  FOREIGN KEY (`fk_ingestion_type`) REFERENCES `INGESTION_TYPE`(`pk_ingestion_type`),
+  FOREIGN KEY (`fk_ingestion_status`) REFERENCES `INGESTION_STATUS`(`pk_ingestion_status`),
+  FOREIGN KEY (`fk_submission`) REFERENCES `SUBMISSION`(`pk_submission`),
+  FOREIGN KEY (`fk_ingestion_error`) REFERENCES `INGESTION_ERROR`(`pk_ingestion_error`)
+) ENGINE=InnoDB;
+
+CREATE TABLE `OUTPUT_FILE` (
+  `pk_output` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `fk_submission` BIGINT,
+  `full_path` VARCHAR(255) COMMENT 'Full path on bucket S3 or remote folder where this file is uploaded',
+  `extention_type` VARCHAR(255),
+  `generated_at` VARCHAR(255),
+  FOREIGN KEY (`fk_submission`) REFERENCES `SUBMISSION`(`pk_submission`)
+) ENGINE=InnoDB;
+
+CREATE TABLE `ERROR_TYPE` (
+  `pk_error_type` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `name` VARCHAR(255),
+  `description` VARCHAR(255),
+  `serverity_level` INT,
+  `is_active` BOOLEAN,
+  `error_code` varchar(255)
+) ENGINE=InnoDB;
+
+CREATE TABLE `LOG` (
+  `pk_log` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `fk_sbmission` BIGINT,
+  `fk_updater` VARCHAR(50),
+  `fk_before_sumbission_status` BIGINT,
+  `fk_after_sumbission_status` BIGINT,
+  `timestamp` datetime,
+  `message` VARCHAR(255),
+  FOREIGN KEY (`fk_sbmission`) REFERENCES `SUBMISSION`(`pk_submission`),
+  FOREIGN KEY (`fk_updater`) REFERENCES `USER`(`pk_user`),
+  FOREIGN KEY (`fk_before_sumbission_status`) REFERENCES `SUBMISSION_STATUS`(`pk_submission_status`),
+  FOREIGN KEY (`fk_after_sumbission_status`) REFERENCES `SUBMISSION_STATUS`(`pk_submission_status`)
+) ENGINE=InnoDB;
+
+CREATE TABLE `MERCHANT` (
+  `pk_merchant` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `fk_ingestion` BIGINT,
+  `fk_submission` BIGINT,
+  `tp_rec` VARCHAR(1),
+  `id_intermediario` VARCHAR(11),
+  `id_esercente` VARCHAR(30),
+  `cod_fiscale` VARCHAR(16),
+  `partita_iva` VARCHAR(11),
+  `created_at` DATETIME,
+  `id_salmov` VARCHAR(50),
+  UNIQUE KEY `unique_esercente_intermediario_submission` (`id_esercente`, `id_intermediario`, `fk_submission`),
+  FOREIGN KEY (fk_submission) REFERENCES SUBMISSION(pk_submission),
+  FOREIGN KEY (fk_ingestion) REFERENCES INGESTION(pk_ingestion)
+) ENGINE=InnoDB;
+
+CREATE TABLE `ERROR_RECORD` (
+	`pk_error_record` BIGINT PRIMARY KEY AUTO_INCREMENT,
+	`fk_ingestion` BIGINT,
+	`fk_submission` BIGINT,
+	`raw_row` TEXT,
+	`created_at` DATETIME,
+	FOREIGN KEY (`fk_ingestion`) REFERENCES `INGESTION`(`pk_ingestion`),
+	FOREIGN KEY (`fk_submission`) REFERENCES `SUBMISSION`(`pk_submission`)
+)
+
+CREATE TABLE `ERROR_CAUSE` (
+	`pk_error_cause` BIGINT PRIMARY KEY AUTO_INCREMENT,
+	`fk_submission` BIGINT,
+	`fk_error_record` BIGINT,
+	`fk_error_type` BIGINT NOT NULL,
+	`error_message` VARCHAR(2500),
+	FOREIGN KEY (fk_error_record) REFERENCES `ERROR_RECORD`(`pk_error_record`),
+	FOREIGN KEY (fk_error_type) REFERENCES `ERROR_TYPE`(pk_error_type),
+	FOREIGN KEY (fk_submission) REFERENCES `SUBMISSION`(pk_submission)
+)
+
+CREATE TABLE `TRANSACTION` (
+  `pk_transaction` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `fk_ingestion` BIGINT,
+  `fk_submission` BIGINT,
+  `tp_rec` VARCHAR(1),
+  `id_intermediario` varchar(11),
+  `id_esercente` varchar(30),
+  `chiave_banca` varchar(50),
+  `id_pos` varchar(30),
+  `tipo_ope` varchar(2),
+  `dt_ope` VARCHAR(8),
+  `divisa_ope` varchar(3),
+  `tipo_pag` varchar(2),
+  `imp_ope` decimal(14,2),
+  `tot_ope` INT,
+  `fk_output` BIGINT,
+  `created_at` DATETIME,
+  FOREIGN KEY (`fk_ingestion`) REFERENCES `INGESTION`(`pk_ingestion`),
+  FOREIGN KEY (`fk_output`) REFERENCES `OUTPUT_FILE`(`pk_output`),
+  FOREIGN KEY (`fk_submission`) REFERENCES `SUBMISSION`(`pk_submission`),
+  UNIQUE KEY transaction_unique (id_esercente, chiave_banca, id_pos, tipo_ope, dt_ope, divisa_ope),
+  CONSTRAINT `fk_esercente_intermediario_submission` FOREIGN KEY (`id_esercente`, `id_intermediario`, `fk_submission`) REFERENCES MERCHANT (`id_esercente`, `id_intermediario`, `fk_submission`)
+) ENGINE=InnoDB;
+
+CREATE TABLE `RESOLVED_TRANSACTION` (
+  `pk_resolved_transaction` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `fk_ingestion` BIGINT,
+  `fk_submission` BIGINT,
+  `tp_rec` VARCHAR(1),
+  `id_intermediario` varchar(11),
+  `id_esercente` varchar(30),
+  `chiave_banca` varchar(50),
+  `id_pos` varchar(30),
+  `tipo_ope` varchar(2),
+  `dt_ope` VARCHAR(8),
+  `divisa_ope` varchar(3),
+  `tipo_pag` varchar(2),
+  `imp_ope` decimal(14,2),
+  `tot_ope` INT,
+  `created_at` DATETIME,
+  `fk_output` BIGINT,
+  `fk_current_submission` BIGINT,
+  FOREIGN KEY (`fk_ingestion`) REFERENCES `INGESTION`(`pk_ingestion`),
+  FOREIGN KEY (`fk_submission`) REFERENCES `SUBMISSION`(`pk_submission`),
+  FOREIGN KEY (`fk_output`) REFERENCES `OUTPUT_FILE`(`pk_output`),
+  FOREIGN KEY (`fk_current_submission`) REFERENCES `SUBMISSION`(`pk_submission`),
+  UNIQUE KEY resolved_transaction_unique (id_esercente, chiave_banca, id_pos, tipo_ope, dt_ope, divisa_ope)
+ )
+
+CREATE TABLE `MERCHANT_SOGGETTI` (
+    `pk_soggetti` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `fk_ingestion` BIGINT,
+    `fk_submission` BIGINT,
+    `intermediario` VARCHAR(11),
+    `ndg` VARCHAR(16),
+    `data_censimento_anagrafico` VARCHAR(8),
+    `data_estinzione_anagrafica` VARCHAR(8),
+    `filiale_censimento_anagrafico` VARCHAR(5),
+    `tipo_soggetto` VARCHAR(1),
+    `natura_giuridica` VARCHAR(5),
+    `sesso` VARCHAR(1),
+    `codice_fiscale` VARCHAR(16),
+    `cognome` VARCHAR(75),
+    `nome` VARCHAR(75),
+    `data_nascita` VARCHAR(8),
+    `comune` VARCHAR(40),
+    `provincia` VARCHAR(2),
+    `nazione` VARCHAR(40),
+    `data_predisposizione_flusso` VARCHAR(8),
+    `controllo_di_fine_riga` VARCHAR(1),
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `fk_output` BIGINT NULL,
+    FOREIGN KEY (`fk_ingestion`) REFERENCES `INGESTION` (`pk_ingestion`),
+    FOREIGN KEY (`fk_output`) REFERENCES `OUTPUT_FILE`(`pk_output`),
+    FOREIGN KEY (`fk_submission`) REFERENCES `SUBMISSION` (`pk_submission`)
+);
+
+CREATE TABLE `MERCHANT_RAPPORTI` (
+    `pk_rapporti` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `fk_ingestion` BIGINT,
+    `fk_submission` BIGINT,
+    `intermediario` VARCHAR(11),
+    `chiave_rapporto` VARCHAR(50),
+    `tipo_rapporto_interno` VARCHAR(3),
+    `forma_tecnica` VARCHAR(5),
+    `filiale` VARCHAR(5),
+    `cab` VARCHAR(5),
+    `numero_conto` VARCHAR(27),
+    `cin` VARCHAR(2),
+    `divisa` VARCHAR(3),
+    `data_inizio_rapporto` VARCHAR(8),
+    `data_fine_rapporto` VARCHAR(8),
+    `note` VARCHAR(24),
+    `flag_stato_rapporto` VARCHAR(1),
+    `data_predisposizione` VARCHAR(8),
+    `controllo_di_fine_riga` VARCHAR(1),
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `fk_output` BIGINT NULL,
+    FOREIGN KEY (`fk_ingestion`) REFERENCES `INGESTION` (`pk_ingestion`),
+    FOREIGN KEY (`fk_submission`) REFERENCES `SUBMISSION` (`pk_submission`),
+    FOREIGN KEY (`fk_output`) REFERENCES `OUTPUT_FILE`(`pk_output`)
+);
+
+CREATE TABLE `MERCHANT_DATI_CONTABILI` (
+    `pk_dati_contabili` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `fk_ingestion` BIGINT,
+    `fk_submission` BIGINT,
+    `intermediario` VARCHAR(11),
+    `chiave_rapporto` VARCHAR(50),
+    `anno_di_riferimento` VARCHAR(4),
+    `periodicita` VARCHAR(3),
+    `progressivo_periodicita` VARCHAR(3),
+    `divisa` VARCHAR(3),
+    `data_inizio_riferimento` VARCHAR(8),
+    `data_fine_riferimento` VARCHAR(8),
+    `importo_saldo_iniziale` VARCHAR(18),
+    `importo_saldo_finale` VARCHAR(18),
+    `totale_operazioni_attive` VARCHAR(18),
+    `totale_operazioni_passive` VARCHAR(18),
+    `giacenza_media` VARCHAR(18),
+    `flag_soglia_saldo_iniziale` VARCHAR(1),
+    `flag_soglia_saldo_finale` VARCHAR(1),
+    `flag_soglia_operazioni_attive` VARCHAR(1),
+    `flag_soglia_operazioni_passive` VARCHAR(1),
+    `flag_soglia_giacenza_media` VARCHAR(1),
+    `altre_informazioni` VARCHAR(18),
+    `flag_stato_importo` VARCHAR(1),
+    `data_predisposizione` VARCHAR(8),
+    `filler_1` VARCHAR(3),
+    `tipo_rapporto_interno` VARCHAR(3),
+    `forma_tecnica` VARCHAR(5),
+    `filler_2` VARCHAR(5),
+    `flag_soglia_altre_informazioni` VARCHAR(1),
+    `filler_3` VARCHAR(5),
+    `controllo_di_fine_riga` VARCHAR(1),
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `fk_output` BIGINT NULL,
+    FOREIGN KEY (`fk_ingestion`) REFERENCES `INGESTION` (`pk_ingestion`),
+    FOREIGN KEY (`fk_submission`) REFERENCES `SUBMISSION` (`pk_submission`),
+    FOREIGN KEY (`fk_output`) REFERENCES `OUTPUT_FILE`(`pk_output`)
+);
+
+CREATE TABLE `MERCHANT_COLLEGAMENTI` (
+    `pk_collegamenti` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `fk_ingestion` BIGINT,
+    `fk_submission` BIGINT,
+    `intermediario` VARCHAR(11),
+    `chiave_rapporto` VARCHAR(50),
+    `ndg` VARCHAR(16),
+    `ruolo` VARCHAR(1),
+    `data_inizio_collegamento` VARCHAR(8),
+    `data_fine_collegamento` VARCHAR(8),
+    `ruolo_interno` VARCHAR(3),
+    `flag_stato_collegamento` VARCHAR(1),
+    `data_predisposizione_flusso` VARCHAR(8),
+    `controllo_di_fine_riga` VARCHAR(1),
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `fk_output` BIGINT NULL,
+    FOREIGN KEY (`fk_ingestion`) REFERENCES `INGESTION` (`pk_ingestion`),
+    FOREIGN KEY (`fk_submission`) REFERENCES `SUBMISSION` (`pk_submission`),
+    FOREIGN KEY (`fk_output`) REFERENCES `OUTPUT_FILE`(`pk_output`)
+);
+
+CREATE TABLE `MERCHANT_CAMBIO_NDG` (
+    `pk_cambio_ndg` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `fk_ingestion` BIGINT,
+    `fk_submission` BIGINT,
+    `intermediario` VARCHAR(11),
+    `ndg_vecchio` VARCHAR(16),
+    `ndg_nuovo` VARCHAR(16),
+    `filler` VARCHAR(6),
+    `controllo_di_fine_riga` VARCHAR(1),
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `fk_output` BIGINT NULL,
+    FOREIGN KEY (`fk_ingestion`) REFERENCES `INGESTION` (`pk_ingestion`),
+    FOREIGN KEY (`fk_submission`) REFERENCES `SUBMISSION` (`pk_submission`),
+    FOREIGN KEY (`fk_output`) REFERENCES `OUTPUT_FILE`(`pk_output`)
+);
+
+CREATE TABLE IF NOT EXISTS STG_RAPPORTI (
+    pk_stg_rapporti INT AUTO_INCREMENT PRIMARY KEY,
+    fk_ingestion BIGINT NOT NULL,
+    fk_submission BIGINT NOT NULL,
+
+    -- Mandatory Entity Fields
+    intermediario VARCHAR(11),
+    chiave_rapporto VARCHAR(50),
+    tipo_rapporto_interno VARCHAR(3),
+    forma_tecnica VARCHAR(5),
+    filiale VARCHAR(5),
+    cab VARCHAR(5),
+    numero_conto VARCHAR(27),
+    cin VARCHAR(2),
+    divisa VARCHAR(3),
+    data_inizio_rapporto VARCHAR(8),
+    data_fine_rapporto VARCHAR(8),
+    note VARCHAR(24),
+    flag_stato_rapporto VARCHAR(1),
+    data_predisposizione VARCHAR(8),
+    controllo_di_fine_riga VARCHAR(1),
+
+    -- Metadata for ETL Logic
+    raw_row VARCHAR(1000), -- Increased size as raw lines are usually long
+    process_status INT DEFAULT NULL COMMENT 'NULL=pending, 1=inserted, 2=duplicate/error',
+    error_message VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Performance Indexes
+    KEY idx_fk_submission (fk_submission),
+    KEY idx_process_status (process_status),
+    -- Combined index for the join logic in Step 1
+    KEY idx_lookup (intermediario, chiave_rapporto, fk_submission),
+
+    -- Foreign Keys
+    CONSTRAINT fk_stg_rapporti_ingestion FOREIGN KEY (fk_ingestion)
+        REFERENCES INGESTION(pk_ingestion),
+    CONSTRAINT fk_stg_rapporti_submission FOREIGN KEY (fk_submission)
+        REFERENCES SUBMISSION(pk_submission)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS STG_DATI_CONTABILI (
+    pk_stg_dati_contabili INT AUTO_INCREMENT PRIMARY KEY,
+    fk_ingestion BIGINT NOT NULL,
+    fk_submission BIGINT NOT NULL,
+
+    intermediario VARCHAR(11),
+    chiave_rapporto VARCHAR(50),
+    anno_di_riferimento VARCHAR(4),
+    periodicita VARCHAR(3),
+    progressivo_periodicita VARCHAR(3),
+    divisa VARCHAR(3),
+    data_inizio_riferimento VARCHAR(8),
+    data_fine_riferimento VARCHAR(8),
+    importo_saldo_iniziale VARCHAR(18),
+    importo_saldo_finale VARCHAR(18),
+    totale_operazioni_attive VARCHAR(18),
+    totale_operazioni_passive VARCHAR(18),
+    giacenza_media VARCHAR(18),
+    flag_soglia_saldo_iniziale VARCHAR(1),
+    flag_soglia_saldo_finale VARCHAR(1),
+    flag_soglia_operazioni_attive VARCHAR(1),
+    flag_soglia_operazioni_passive VARCHAR(1),
+    flag_soglia_giacenza_media VARCHAR(1),
+    altre_informazioni VARCHAR(18),
+    flag_stato_importo VARCHAR(1),
+    data_predisposizione VARCHAR(8),
+    tipo_rapporto_interno VARCHAR(3),
+    forma_tecnica VARCHAR(5),
+    flag_soglia_altre_informazioni VARCHAR(1),
+    controllo_di_fine_riga VARCHAR(1),
+
+    raw_row VARCHAR(1000),
+    process_status INT DEFAULT NULL COMMENT '1=inserted, 2=duplicate, 3=missing_ref',
+    error_message VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    KEY idx_fk_submission (fk_submission),
+    KEY idx_process_status (process_status),
+    KEY idx_lookup (intermediario, chiave_rapporto, anno_di_riferimento, periodicita, progressivo_periodicita, fk_submission),
+
+    CONSTRAINT fk_stg_dati_contabili_ingestion FOREIGN KEY (fk_ingestion)
+        REFERENCES INGESTION(pk_ingestion),
+    CONSTRAINT fk_stg_dati_contabili_submission FOREIGN KEY (fk_submission)
+        REFERENCES SUBMISSION(pk_submission)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS STG_COLLEGAMENTI (
+    pk_stg_collegamenti INT AUTO_INCREMENT PRIMARY KEY,
+    fk_ingestion BIGINT NOT NULL,
+    fk_submission BIGINT NOT NULL,
+    intermediario VARCHAR(11),
+    chiave_rapporto VARCHAR(50),
+    ndg VARCHAR(16),
+    ruolo VARCHAR(1),
+    data_inizio_collegamento VARCHAR(8),
+    data_fine_collegamento VARCHAR(8),
+    ruolo_interno VARCHAR(3),
+    flag_stato_collegamento VARCHAR(1),
+    data_predisposizione_flusso VARCHAR(8),
+    controllo_di_fine_riga VARCHAR(1),
+    raw_row VARCHAR(1000),
+    process_status INT DEFAULT NULL COMMENT '1=inserted, 2=duplicate, 3=missing_ref',
+    error_message VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    KEY idx_fk_submission (fk_submission),
+    KEY idx_process_status (process_status),
+    KEY idx_lookup (intermediario, chiave_rapporto, ndg, fk_submission),
+
+    CONSTRAINT fk_stg_collegamenti_ingestion FOREIGN KEY (fk_ingestion)
+        REFERENCES INGESTION(pk_ingestion),
+    CONSTRAINT fk_stg_collegamenti_submission FOREIGN KEY (fk_submission)
+        REFERENCES SUBMISSION(pk_submission)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+
+CREATE TABLE IF NOT EXISTS STG_CAMBIO_NDG (
+    pk_stg_cambio_ndg INT AUTO_INCREMENT PRIMARY KEY,
+    fk_ingestion BIGINT NOT NULL,
+    fk_submission BIGINT NOT NULL,
+
+    intermediario VARCHAR(11),
+    ndg_vecchio VARCHAR(16),
+    ndg_nuovo VARCHAR(16),
+    controllo_di_fine_riga VARCHAR(1),
+    raw_row VARCHAR(1000),
+    process_status INT DEFAULT NULL,
+    error_message VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    KEY idx_fk_submission (fk_submission),
+    KEY idx_process_status (process_status),
+    KEY idx_lookup (intermediario, ndg_vecchio, ndg_nuovo, fk_submission),
+
+    CONSTRAINT fk_stg_cambio_ndg_ingestion FOREIGN KEY (fk_ingestion)
+        REFERENCES INGESTION(pk_ingestion),
+    CONSTRAINT fk_stg_cambio_ndg_submission FOREIGN KEY (fk_submission)
+        REFERENCES SUBMISSION(pk_submission)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+
+CREATE TABLE IF NOT EXISTS STG_SOGGETTI (
+    pk_stg_merchant INT AUTO_INCREMENT PRIMARY KEY,
+    fk_ingestion BIGINT NOT NULL,
+    fk_submission BIGINT NOT NULL,
+    intermediario VARCHAR(11),
+    ndg VARCHAR(16),
+    data_censimento_anagrafico VARCHAR(8),
+    data_estinzione_anagrafica VARCHAR(8),
+    filiale_censimento_anagrafico VARCHAR(5),
+    tipo_soggetto VARCHAR(1),
+    natura_giuridica VARCHAR(5),
+    sesso VARCHAR(1),
+    codice_fiscale VARCHAR(16),
+    cognome VARCHAR(75),
+    nome VARCHAR(75),
+    data_nascita VARCHAR(8),
+    comune VARCHAR(40),
+    provincia VARCHAR(2),
+    nazione VARCHAR(40),
+    data_predisposizione_flusso VARCHAR(8),
+    controllo_di_fine_riga VARCHAR(1),
+    raw_row VARCHAR(1000),
+    process_status INT DEFAULT NULL,
+    error_message VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    KEY idx_fk_submission (fk_submission),
+    KEY idx_process_status (process_status),
+    KEY idx_lookup (intermediario, ndg, fk_submission),
+
+    CONSTRAINT fk_stg_merchant_ingestion FOREIGN KEY (fk_ingestion)
+        REFERENCES INGESTION(pk_ingestion),
+    CONSTRAINT fk_stg_merchant_submission FOREIGN KEY (fk_submission)
+        REFERENCES SUBMISSION(pk_submission)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci; -- Fixed Collation
+
+
+ALTER TABLE MERCHANT_RAPPORTI
+ADD COLUMN collegamenti_chiave_rapporto VARCHAR(50),
+ADD FOREIGN KEY (collegamenti_chiave_rapporto) REFERENCES MERCHANT_COLLEGAMENTI(chiave_rapporto);
+
+CREATE INDEX idx_soggetti_fk_output_pk ON MERCHANT_SOGGETTI (fk_output, pk_soggetti);
+CREATE INDEX idx_soggetti_output_submission ON MERCHANT_SOGGETTI (fk_output, pk_soggetti, fk_submission);
+CREATE INDEX idx_soggetti_fk_submission_fk_output ON MERCHANT_SOGGETTI (fk_submission, fk_output);
+CREATE INDEX idx_soggetti_ingestion ON MERCHANT_SOGGETTI (fk_ingestion);
+CREATE INDEX idx_soggetti_submission ON MERCHANT_SOGGETTI (fk_submission);
+
+CREATE INDEX idx_error_record_ingestion_raw_row
+ON ERROR_RECORD (fk_ingestion, raw_row(250));
+
+-- Align the Staging table
+ALTER TABLE STG_SOGGETTI CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+ALTER TABLE MERCHANT_SOGGETTI CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+ALTER TABLE STG_RAPPORTI CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+ALTER TABLE MERCHANT_RAPPORTI CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+ALTER TABLE STG_DATI_CONTABILI CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+ALTER TABLE MERCHANT_DATI_CONTABILI CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+ALTER TABLE STG_COLLEGAMENTI CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+ALTER TABLE MERCHANT_COLLEGAMENTI CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+ALTER TABLE STG_CAMBIO_NDG CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+ALTER TABLE MERCHANT_CAMBIO_NDG CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+

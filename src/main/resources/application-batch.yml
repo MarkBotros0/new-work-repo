@@ -1,0 +1,120 @@
+# ===================================================================
+# Spring Boot configuration for the "batch" profile.
+#
+# This profile is used for ECS Fargate batch ingestion jobs.
+# NO web server - runs as a command-line job and exits.
+# ===================================================================
+
+# Disable web server - this is a batch job, not a web application
+spring:
+  application:
+    name: pos-trx-ade  # Same as dev profile
+  main:
+    web-application-type: none
+    banner-mode: 'off'
+    allow-bean-definition-overriding: true
+
+  # Disable session management (not needed for batch)
+  session:
+    store-type: none
+
+  # Minimal scheduling pool (batch job doesn't use @Scheduled, but Spring requires size >= 1)
+  task:
+    scheduling:
+      pool:
+        size: ${SPRING_TASK_SCHEDULING_POOL_SIZE}  # Minimum required by Spring Boot (even if not used)
+
+  datasource:
+    type: com.zaxxer.hikari.HikariDataSource
+    # Database connection - uses environment variables from ECS Task Definition
+    url: jdbc:mysql://${DB_HOST}:${DB_PORT:3306}/${DB_NAME}?useSSL=true&serverTimezone=UTC&allowPublicKeyRetrieval=true&autoReconnect=true&failOverReadOnly=false&maxReconnects=3&connectTimeout=30000&socketTimeout=3600000
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driverClassName: com.mysql.cj.jdbc.Driver
+    hikari:
+      poolName: Hikari-Batch
+      auto-commit: false
+      # Larger pool for batch processing
+      maximum-pool-size: 15
+      minimum-idle: 5
+      connection-timeout: 60000   # 60 seconds (batch can wait longer)
+      idle-timeout: 300000        # 5 minutes
+      max-lifetime: 900000        # 15 minutes
+      leak-detection-threshold: 600000  # 10 minutes (batch operations are long)
+      validation-timeout: 10000
+      keepalive-time: 60000       # 1 minute keepalive (more frequent for long operations)
+      data-source-properties:
+        cachePrepStmts: true
+        prepStmtCacheSize: 500
+        prepStmtCacheSqlLimit: 4096
+        useServerPrepStmts: true
+
+  jpa:
+    open-in-view: false
+    show-sql: false
+    hibernate:
+      ddl-auto: validate
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+        implicit-strategy: org.hibernate.boot.model.naming.ImplicitNamingStrategyLegacyJpaImpl
+    properties:
+      hibernate.dialect: org.hibernate.dialect.MySQL8Dialect
+      hibernate.default_schema: ${DB_NAME:posappdb}
+      hibernate.jdbc.time_zone: UTC
+      hibernate.id.new_generator_mappings: true
+      hibernate.globally_quoted_identifiers: true
+      hibernate.connection.provider_disables_autocommit: true
+      hibernate.cache.use_second_level_cache: false
+      hibernate.cache.use_query_cache: false
+      hibernate.format_sql: false
+      hibernate.generate_statistics: false
+      # Larger batch sizes for bulk operations
+      hibernate.jdbc.batch_size: 100
+      hibernate.order_inserts: true
+      hibernate.order_updates: true
+      hibernate.jdbc.fetch_size: 500
+      hibernate.criteria.literal_handling_mode: BIND
+      hibernate.query.fail_on_pagination_over_collection_fetch: true
+      hibernate.query.in_clause_parameter_padding: true
+
+  jmx:
+    enabled: false
+
+# Logging configuration for batch mode
+logging:
+  level:
+    root: INFO
+    it.deloitte.postrxade: INFO
+    # Detailed logging for ingestion process
+    it.deloitte.postrxade.batch.BatchIngestionRunner: INFO
+    it.deloitte.postrxade.service.impl.ObligationServiceImpl: INFO  # Can be set to DEBUG for troubleshooting
+    it.deloitte.postrxade.service.impl.StagingIngestionServiceImpl: INFO
+    it.deloitte.postrxade.repository.impl.StagingRepositoryImpl: INFO
+    it.deloitte.postrxade.service.impl.S3ServiceImpl: INFO
+    # Hibernate SQL logs disabled (too verbose)
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN
+    com.zaxxer.hikari: INFO
+
+# AWS S3 Configuration
+aws:
+  s3:
+    bucket-name: ${S3_BUCKET_NAME}
+    region: ${S3_BUCKET_REGION}
+    output-folder: ${S3_BUCKET_OUTPUT_FOLDER}
+    input-folder: ${S3_BUCKET_INPUT_FOLDER}
+    input-folder-loaded: ${S3_BUCKET_INPUT_FOLDER_LOADED}
+
+# Application configuration
+application:
+  authority:
+    info-env: 'INT'  # Environment identifier (same as dev)
+  ingestion:
+    use-staging: true  # Always use staging for batch processing
+  rest:
+    tracing-request:
+      enabled: false  # Disable request tracing in batch mode (not needed)
+  # Note: security.* properties not needed in batch mode
+  # LambdaAuthAspect, SecurityConfiguration are excluded via @Profile("!batch")
+  # Note: cors.* properties not needed in batch mode
+  # WebConfig is excluded via @Profile("!batch")
