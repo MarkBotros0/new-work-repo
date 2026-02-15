@@ -1316,43 +1316,86 @@ public class ObligationServiceImpl implements ObligationService {
     }
 
     private void cleanUpFailedSubmission(Submission submission, Ingestion ingestion, Exception exception) throws NotFoundRecordException {
-        String errorMsg = "Ingestion ID: " + ingestion.getId() + " failed with error message: " + exception.getMessage();
-        Log log = new Log();
-        log.setSubmission(submission);
-        log.setBeforeSubmissionStatus(submission.getCurrentSubmissionStatus());
-        log.setMessage(errorMsg.substring(0, Math.min(255, errorMsg.length())));
+        // Build comprehensive error message with full exception details
+        StringBuilder fullErrorMsg = new StringBuilder();
+        fullErrorMsg.append("Ingestion ID: ").append(ingestion.getId()).append(" failed\n");
+        fullErrorMsg.append("Error Type: ").append(exception.getClass().getName()).append("\n");
+        fullErrorMsg.append("Error Message: ").append(exception.getMessage()).append("\n");
+        
+        // Add cause if present
+        Throwable cause = exception.getCause();
+        if (cause != null) {
+            fullErrorMsg.append("Caused by: ").append(cause.getClass().getName()).append("\n");
+            fullErrorMsg.append("Cause Message: ").append(cause.getMessage()).append("\n");
+        }
+        
+        // Add first few stack trace elements for context
+        fullErrorMsg.append("Stack Trace:\n");
+        StackTraceElement[] stackTrace = exception.getStackTrace();
+        int maxStackLines = Math.min(10, stackTrace.length);
+        for (int i = 0; i < maxStackLines; i++) {
+            fullErrorMsg.append("  at ").append(stackTrace[i].toString()).append("\n");
+        }
+        
+        String fullError = fullErrorMsg.toString();
+        
+        // Log the full error message
+        log.error("=== FULL ERROR DETAILS FOR INGESTION {} ===", ingestion.getId());
+        log.error(fullError);
+        log.error("=== END ERROR DETAILS ===");
+        
+        // Save to Log table (now supports TEXT, no truncation needed)
+        Log logEntry = new Log();
+        logEntry.setSubmission(submission);
+        logEntry.setBeforeSubmissionStatus(submission.getCurrentSubmissionStatus());
+        logEntry.setMessage(fullError); // Full error message, no truncation
 
         submissionService.markAsError(submission);
 
-        log.setAfterSubmissionStatus(submission.getCurrentSubmissionStatus());
-        logRepository.save(log);
+        logEntry.setAfterSubmissionStatus(submission.getCurrentSubmissionStatus());
+        logRepository.save(logEntry);
 
         // Delete in correct order: children before parent (respecting FK constraints)
+        log.info("Cleaning up failed submission {} - deleting records in correct order", submission.getId());
+        
         // Phase 1: Delete independent table
-        cambioNdgRepository.deleteBySubmissionId(submission.getId());
+        int cambioNdgDeleted = cambioNdgRepository.deleteBySubmissionId(submission.getId());
+        log.info("Deleted {} CambioNdg records", cambioNdgDeleted);
         
         // Phase 2: Delete children (have FK to Collegamenti)
-        datiContabiliRepository.deleteBySubmissionId(submission.getId());
-        rapportiRepository.deleteBySubmissionId(submission.getId());
-        soggettiRepository.deleteBySubmissionId(submission.getId());
+        int datiContabiliDeleted = datiContabiliRepository.deleteBySubmissionId(submission.getId());
+        log.info("Deleted {} DatiContabili records", datiContabiliDeleted);
+        
+        int rapportiDeleted = rapportiRepository.deleteBySubmissionId(submission.getId());
+        log.info("Deleted {} Rapporti records", rapportiDeleted);
+        
+        int soggettiDeleted = soggettiRepository.deleteBySubmissionId(submission.getId());
+        log.info("Deleted {} Soggetti records", soggettiDeleted);
         
         // Phase 3: Delete parent (must be last)
-        collegamentiRepository.deleteBySubmissionId(submission.getId());
+        int collegamentiDeleted = collegamentiRepository.deleteBySubmissionId(submission.getId());
+        log.info("Deleted {} Collegamenti records", collegamentiDeleted);
         
         // Phase 4: Delete error tracking
-        errorCauseRepository.deleteBySubmissionId(submission.getId());
-        errorRecordRepository.deleteBySubmissionId(submission.getId());
+        int errorCauseDeleted = errorCauseRepository.deleteBySubmissionId(submission.getId());
+        log.info("Deleted {} ErrorCause records", errorCauseDeleted);
+        
+        int errorRecordDeleted = errorRecordRepository.deleteBySubmissionId(submission.getId());
+        log.info("Deleted {} ErrorRecord records", errorRecordDeleted);
 
         IngestionStatus errorStatus = ingestionStatusRepository.findOneByName(IngestionStatusEnum.FAILED.name())
                 .orElseThrow(() -> new NotFoundRecordException("Ingestion status with name failed is not found"));
 
         IngestionError ingestionError = new IngestionError();
-        ingestionError.setDescription(errorMsg.substring(0, Math.min(errorMsg.length(), 255)));
+        // Full error message, no truncation (TEXT column supports it)
+        ingestionError.setDescription(fullError);
         ingestionErrorRepository.save(ingestionError);
 
         ingestion.setIngestionStatus(errorStatus);
         ingestion.setIngestionError(ingestionError);
         ingestionRepository.save(ingestion);
+        
+        log.info("Cleanup completed for failed submission {}", submission.getId());
     }
 
 //    private void retryFailedTransactions(Obligation obligation, Period period, Submission currentSubmission) {

@@ -165,17 +165,17 @@ public class StagingIngestionServiceImpl implements StagingIngestionService {
             createErrorRecordsForDuplicateSoggetti(ingestion, submission);
         }
 
-        // Phase 5: CRITICAL - Check for missing Collegamenti parent (FK validation)
-        int missingParentCount = createErrorRecordsForMissingSoggettiCollegamenti(ingestion, submission);
-        if (missingParentCount > 0) {
-            log.warn("Found {} soggetti records with missing Collegamenti parent", missingParentCount);
+        // Phase 5: Create ErrorRecords for missing Collegamenti parent (already marked in staging)
+        if (stagingResult.missingMerchantCount() > 0) {
+            log.warn("Found {} soggetti records with missing Collegamenti parent", stagingResult.missingMerchantCount());
+            createErrorRecordsForMissingSoggettiCollegamenti(ingestion, submission);
         }
 
         long elapsed = System.currentTimeMillis() - startTime;
         log.info("Completed merchant ingestion in {}ms: parsed={}, inserted={}, duplicates={}, validationErrors={}, missingParents={}",
-                elapsed, totalParsed, stagingResult.insertedCount(), stagingResult.duplicateCount(), totalValidationErrors, missingParentCount);
+                elapsed, totalParsed, stagingResult.insertedCount(), stagingResult.duplicateCount(), totalValidationErrors, stagingResult.missingMerchantCount());
 
-        return new StagingResult(stagingResult.insertedCount(), stagingResult.duplicateCount(), missingParentCount, totalValidationErrors);
+        return new StagingResult(stagingResult.insertedCount(), stagingResult.duplicateCount(), stagingResult.missingMerchantCount(), totalValidationErrors);
     }
 
     /**
@@ -862,17 +862,17 @@ public class StagingIngestionServiceImpl implements StagingIngestionService {
             createErrorRecordsForDuplicateRapporti(ingestion, submission);
         }
 
-        // CRITICAL: Check for missing Collegamenti parent (FK validation)
-        int missingParentCount = createErrorRecordsForMissingRapportiCollegamenti(ingestion, submission);
-        if (missingParentCount > 0) {
-            log.warn("Found {} rapporti records with missing Collegamenti parent", missingParentCount);
+        // Create ErrorRecords for missing Collegamenti parent (already marked in staging)
+        if (stagingResult.missingMerchantCount() > 0) {
+            log.warn("Found {} rapporti records with missing Collegamenti parent", stagingResult.missingMerchantCount());
+            createErrorRecordsForMissingRapportiCollegamenti(ingestion, submission);
         }
 
         long elapsed = System.currentTimeMillis() - startTime;
         log.info("Completed rapporti ingestion in {}ms: parsed={}, inserted={}, duplicates={}, validationErrors={}, missingParents={}",
-                elapsed, totalParsed, stagingResult.insertedCount(), stagingResult.duplicateCount(), totalValidationErrors, missingParentCount);
+                elapsed, totalParsed, stagingResult.insertedCount(), stagingResult.duplicateCount(), totalValidationErrors, stagingResult.missingMerchantCount());
 
-        return new StagingResult(stagingResult.insertedCount(), stagingResult.duplicateCount(), missingParentCount, totalValidationErrors);
+        return new StagingResult(stagingResult.insertedCount(), stagingResult.duplicateCount(), stagingResult.missingMerchantCount(), totalValidationErrors);
     }
 
     @Override
@@ -959,17 +959,17 @@ public class StagingIngestionServiceImpl implements StagingIngestionService {
             createErrorRecordsForDuplicateDatiContabili(ingestion, submission);
         }
 
-        // CRITICAL: Check for missing Collegamenti parent (FK validation)
-        int missingParentCount = createErrorRecordsForMissingDatiContabiliCollegamenti(ingestion, submission);
-        if (missingParentCount > 0) {
-            log.warn("Found {} daticontabili records with missing Collegamenti parent", missingParentCount);
+        // Create ErrorRecords for missing Collegamenti parent (already marked in staging)
+        if (stagingResult.missingMerchantCount() > 0) {
+            log.warn("Found {} daticontabili records with missing Collegamenti parent", stagingResult.missingMerchantCount());
+            createErrorRecordsForMissingDatiContabiliCollegamenti(ingestion, submission);
         }
 
         long elapsed = System.currentTimeMillis() - startTime;
         log.info("Completed daticontabili ingestion in {}ms: parsed={}, inserted={}, duplicates={}, validationErrors={}, missingParents={}",
-                elapsed, totalParsed, stagingResult.insertedCount(), stagingResult.duplicateCount(), totalValidationErrors, missingParentCount);
+                elapsed, totalParsed, stagingResult.insertedCount(), stagingResult.duplicateCount(), totalValidationErrors, stagingResult.missingMerchantCount());
 
-        return new StagingResult(stagingResult.insertedCount(), stagingResult.duplicateCount(), missingParentCount, totalValidationErrors);
+        return new StagingResult(stagingResult.insertedCount(), stagingResult.duplicateCount(), stagingResult.missingMerchantCount(), totalValidationErrors);
     }
 
     @Override

@@ -138,7 +138,7 @@ CREATE TABLE `INGESTION_STATUS` (
 CREATE TABLE `INGESTION_ERROR` (
   `pk_ingestion_error` BIGINT PRIMARY KEY AUTO_INCREMENT,
   `name` VARCHAR(255),
-  `description` VARCHAR(255),
+  `description` TEXT,
   `order` INT,
   `is_active` BOOLEAN
 ) ENGINE=InnoDB;
@@ -189,7 +189,7 @@ CREATE TABLE `LOG` (
   `fk_before_sumbission_status` BIGINT,
   `fk_after_sumbission_status` BIGINT,
   `timestamp` datetime,
-  `message` VARCHAR(255),
+  `message` TEXT,
   KEY `idx_log_submission` (`fk_sbmission`),
   KEY `idx_log_timestamp` (`timestamp`),
   FOREIGN KEY (`fk_sbmission`) REFERENCES `SUBMISSION`(`pk_submission`),

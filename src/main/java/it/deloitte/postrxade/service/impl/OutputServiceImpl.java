@@ -67,12 +67,24 @@ public class OutputServiceImpl implements OutputService {
 
     @Value("${aws.s3.output-folder}")
     private String outputFolder;
-    private TransactionTemplate transactionTemplate;
-    private PlatformTransactionManager transactionManager;
+    private final TransactionTemplate transactionTemplate;
+    private final PlatformTransactionManager transactionManager;
+
+    @Autowired
+    public OutputServiceImpl(PlatformTransactionManager transactionManager) {
+        this.transactionManager = transactionManager;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+    }
+
+    private TransactionTemplate createBatchTransactionTemplate(int timeoutSeconds) {
+        TransactionTemplate template = new TransactionTemplate(transactionManager);
+        template.setTimeout(timeoutSeconds);
+        return template;
+    }
 
 
     @Override
-    public List<Output> generateOutput(Submission submission) {
+    public List<Output> generateOutputMerchant(Submission submission) {
         if (submission == null || submission.getId() == null) {
             return Collections.emptyList();
         }
@@ -166,7 +178,7 @@ public class OutputServiceImpl implements OutputService {
                 batchTemplate.execute(status -> {
                     log.info("Updating collegamenti batch {}/{} for outputId={}, size={}",
                             currentBatch, totalBatches, outputEntity.getId(), batch.size());
-                    collegamentiRepository.updateOutputForeignKey(batch, outputEntity.getId());
+                    collegamentiRepository.updateOutputForeignKey(batch, outputEntity);
                     return null;
                 });
             }
@@ -216,16 +228,18 @@ public class OutputServiceImpl implements OutputService {
              ZipOutputStream zos = new ZipOutputStream(baos, StandardCharsets.UTF_8)) {
 
             for (Output output : outputs) {
-                // Fetch tagged data using the unique Output ID
-//                List<Collegamenti> collegamentiList = collegamentiRepository.findByOutputId(output.getId());
-                List<Collegamenti> collegamentiList = collegamentiRepository.findCollegamentiBySubmissionIdAndNullOutputBulkFetched(
+                log.info("Processing output file {} for submission {}", output.getId(), submissionId);
+                
+                // Fetch Collegamenti with ALL children using optimized JOIN query
+                List<Collegamenti> collegamentiList = collegamentiRepository.findCollegamentiWithChildrenByOutputId(
                         submissionId, output.getId(), rowsPerOutputFile);
-                List<Rapporti> rapportiList = rapportiRepository.findByOutputId(output.getId());
-//                List<Soggetti> soggettiList = soggettiRepository.findByOutputId(output.getId());
-//                List<DatiContabili> datiContabiliList = datiContabiliRepository.findByOutputId(output.getId());
 
-//                log.debug("Formatting file. Soggetti: {}, Rapporti: {}, Dati: {}",
-//                        soggettiList.size(), rapportiList.size(), datiContabiliList.size());
+                log.info("Fetched {} collegamenti with children for output {}", collegamentiList.size(), output.getId());
+
+                // Count records for each section
+                int section1Count = 0; // Collegamenti + Rapporti
+                int section2Count = 0; // Collegamenti + Rapporti + Soggetti  
+                int section3Count = 0; // Collegamenti + DatiContabili
 
                 // Use the filename generated in generateOutputMerchant
                 String entryName = output.getFullPath().substring(output.getFullPath().lastIndexOf("/") + 1);
@@ -234,28 +248,39 @@ public class OutputServiceImpl implements OutputService {
                 // 1. Header
                 zos.write(OutputFileFormatter.createHeader().getBytes(StandardCharsets.UTF_8));
 
-                // 2. Rapporti
-                for (Rapporti r : rapportiList) {
-                    zos.write((OutputFileFormatter.toRapportiOutputString(r)).getBytes(StandardCharsets.UTF_8));
-                }
-
-                // 3. Soggetti
+                // 2. Section 1: Collegamenti with Rapporti children (Type 1 records)
                 for (Collegamenti c : collegamentiList) {
-                    zos.write((OutputFileFormatter.toCollegamentiOutputString(c)).getBytes(StandardCharsets.UTF_8));
+                    if (c.getRapporto() != null) {
+                        String line = OutputFileFormatter.toRapportiOutputString(c);
+                        zos.write(line.getBytes(StandardCharsets.UTF_8));
+                        section1Count++;
+                    }
                 }
 
-                // 4. Dati Contabili
+                // 3. Section 2: Collegamenti with Rapporti and Soggetti children (Type 2 records)
                 for (Collegamenti c : collegamentiList) {
-                    zos.write((OutputFileFormatter.toCollegamentiOutputString2(c)).getBytes(StandardCharsets.UTF_8));
+                    if (c.getRapporto() != null && c.getSoggetto() != null) {
+                        String line = OutputFileFormatter.toCollegamentiOutputString(c);
+                        zos.write(line.getBytes(StandardCharsets.UTF_8));
+                        section2Count++;
+                    }
                 }
 
-                // 5. Footer
-                String footer = OutputFileFormatter.createFooter(
-                        rapportiList.size(),
-                        collegamentiList.size(),
-                        collegamentiList.size()
-                );
+                // 4. Section 3: Collegamenti with DatiContabili children (Type 3 records)
+                for (Collegamenti c : collegamentiList) {
+                    if (c.getDatiContabili() != null) {
+                        String line = OutputFileFormatter.toCollegamentiOutputString2(c);
+                        zos.write(line.getBytes(StandardCharsets.UTF_8));
+                        section3Count++;
+                    }
+                }
+
+                // 5. Footer with counts for the 3 sections
+                String footer = OutputFileFormatter.createFooter(section1Count, section2Count, section3Count);
                 zos.write(footer.getBytes(StandardCharsets.UTF_8));
+
+                log.info("Output file {} completed: Section1={}, Section2={}, Section3={}", 
+                        output.getId(), section1Count, section2Count, section3Count);
 
                 zos.closeEntry();
             }

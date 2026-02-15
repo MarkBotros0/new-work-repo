@@ -36,5 +36,20 @@ public interface CollegamentiRepositoryCustom {
 
     List<Long> findCollegamentiIdsBySubmissionIdAndNullOutput(Long submissionId, int rowsPerPage);
 
-    List<Collegamenti> findCollegamentiBySubmissionIdAndNullOutputBulkFetched(Long submissionId, Long lastId, int limit);
+    /**
+     * Fetch Collegamenti with all children (Rapporti, Soggetti, DatiContabili) using JOINs.
+     * This method is optimized for output generation to avoid N+1 queries.
+     * 
+     * @param submissionId The submission ID
+     * @param outputId The output ID to filter by
+     * @param limit Maximum number of records to fetch
+     * @return List of Collegamenti with populated children
+     */
+    List<Collegamenti> findCollegamentiWithChildrenByOutputId(Long submissionId, Long outputId, int limit);
+
+    /**
+     * Fetch NDG and chiave_rapporto for given Collegamenti IDs.
+     * Returns List<Object[]> where each array contains [ndg, chiave_rapporto].
+     */
+    List<Object[]> findNdgAndChiaviByIds(List<Long> collegamentiIds);
 }

@@ -8,10 +8,9 @@ import java.io.IOException;
 import java.util.List;
 
 public interface OutputService {
-    List<Output> generateOutput(Submission submission);
+    List<Output> generateOutputMerchant(Submission submission);
 
     void generateSubmissionOutputTxt(Long submissionId) throws NotFoundRecordException, IOException;
 
     void generateSubmissionOutputTxtAsync(Long submissionId);
-    List<Output> generateOutputMerchant(Submission submission);
 }

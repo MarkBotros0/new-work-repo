@@ -89,7 +89,7 @@ public class CollegamentiRepositoryImpl implements CollegamentiRepositoryCustom 
     public List<Long> findCollegamentiIdsBySubmissionIdAndNullOutput(Long submissionId, int rowsPerPage) {
         String nativeSql = "SELECT mc.pk_collegamenti " +
                 "FROM MERCHANT_COLLEGAMENTI mc " +
-                "WHERE mc.pk_submission = :submissionId " +
+                "WHERE mc.fk_submission = :submissionId " +
                 "AND mc.fk_output IS NULL " +
                 "ORDER BY mc.pk_collegamenti ASC " +
                 "LIMIT :limit";
@@ -225,133 +225,186 @@ public class CollegamentiRepositoryImpl implements CollegamentiRepositoryCustom 
     }
 
     @Override
-    public List<Collegamenti> findCollegamentiBySubmissionIdAndNullOutputBulkFetched(Long submissionId, Long lastId, int limit) {
-        String nativeSql;
-
-        if (lastId == null) {
-            nativeSql = """
+    public List<Collegamenti> findCollegamentiWithChildrenByOutputId(Long submissionId, Long outputId, int limit) {
+        // Fetch Collegamenti with all children (Rapporti, Soggetti, DatiContabili) using JOINs
+        // This avoids N+1 query problem and fetches everything in a single query
+        String nativeSql = """
             SELECT
-                c.pk_collegamenti,
-                c.fk_ingestion,
-                c.fk_submission,
-                c.intermediario,
-                c.chiave_rapporto,
-                c.ndg,
-                c.ruolo,
-                c.data_inizio_collegamento,
-                c.data_fine_collegamento,
-                c.ruolo_interno,
-                c.flag_stato_collegamento,
-                c.data_predisposizione_flusso,
-                c.controllo_di_fine_riga,
-                c.created_at,
-                c.fk_output
+                -- Collegamenti fields (15 fields)
+                c.pk_collegamenti, c.fk_ingestion, c.fk_submission, c.intermediario, c.chiave_rapporto,
+                c.ndg, c.ruolo, c.data_inizio_collegamento, c.data_fine_collegamento, c.ruolo_interno,
+                c.flag_stato_collegamento, c.data_predisposizione_flusso, c.controllo_di_fine_riga,
+                c.created_at, c.fk_output,
+                
+                -- Rapporti fields (18 fields)
+                r.pk_rapporti, r.fk_ingestion, r.fk_submission, r.intermediario, r.chiave_rapporto,
+                r.tipo_rapporto_interno, r.forma_tecnica, r.filiale, r.cab, r.numero_conto,
+                r.cin, r.divisa, r.data_inizio_rapporto, r.data_fine_rapporto, r.note,
+                r.flag_stato_rapporto, r.data_predisposizione, r.controllo_di_fine_riga,
+                
+                -- Soggetti fields (17 fields)
+                s.pk_soggetti, s.fk_ingestion, s.fk_submission, s.intermediario, s.ndg,
+                s.data_censimento_anagrafico, s.data_estinzione_anagrafica, s.filiale_censimento_anagrafico,
+                s.tipo_soggetto, s.natura_giuridica, s.sesso, s.codice_fiscale, s.cognome,
+                s.nome, s.data_nascita, s.comune, s.provincia,
+                
+                -- DatiContabili fields (26 fields)
+                d.pk_dati_contabili, d.fk_ingestion, d.fk_submission, d.intermediario, d.chiave_rapporto,
+                d.anno_di_riferimento, d.periodicita, d.progressivo_periodicita, d.divisa,
+                d.data_inizio_riferimento, d.data_fine_riferimento, d.importo_saldo_iniziale,
+                d.importo_saldo_finale, d.totale_operazioni_attive, d.totale_operazioni_passive,
+                d.giacenza_media, d.flag_soglia_saldo_iniziale, d.flag_soglia_saldo_finale,
+                d.flag_soglia_operazioni_attive, d.flag_soglia_operazioni_passive, d.flag_soglia_giacenza_media,
+                d.altre_informazioni, d.flag_stato_importo, d.data_predisposizione,
+                d.tipo_rapporto_interno, d.forma_tecnica
+                
             FROM MERCHANT_COLLEGAMENTI c
+            LEFT JOIN MERCHANT_RAPPORTI r 
+                ON c.chiave_rapporto = r.chiave_rapporto 
+                AND c.fk_submission = r.fk_submission
+                AND r.fk_output = :outputId
+            LEFT JOIN MERCHANT_SOGGETTI s 
+                ON c.ndg = s.ndg 
+                AND c.fk_submission = s.fk_submission
+                AND s.fk_output = :outputId
+            LEFT JOIN MERCHANT_DATI_CONTABILI d 
+                ON c.chiave_rapporto = d.chiave_rapporto 
+                AND c.fk_submission = d.fk_submission
+                AND d.fk_output = :outputId
             WHERE c.fk_submission = :submissionId
-              AND c.fk_output IS NULL
+              AND c.fk_output = :outputId
             ORDER BY c.pk_collegamenti ASC
             LIMIT :limit
             """;
-        } else {
-            nativeSql = """
-            SELECT
-                c.pk_collegamenti,
-                c.fk_ingestion,
-                c.fk_submission,
-                c.intermediario,
-                c.chiave_rapporto,
-                c.ndg,
-                c.ruolo,
-                c.data_inizio_collegamento,
-                c.data_fine_collegamento,
-                c.ruolo_interno,
-                c.flag_stato_collegamento,
-                c.data_predisposizione_flusso,
-                c.controllo_di_fine_riga,
-                c.created_at,
-                c.fk_output
-            FROM MERCHANT_COLLEGAMENTI c
-            WHERE c.fk_submission = :submissionId
-              AND c.fk_output IS NULL
-              AND c.pk_collegamenti > :lastId
-            ORDER BY c.pk_collegamenti ASC
-            LIMIT :limit
-            """;
-        }
 
-        Query query = entityManager
-                .createNativeQuery(nativeSql)
+        Query query = entityManager.createNativeQuery(nativeSql)
                 .setParameter("submissionId", submissionId)
+                .setParameter("outputId", outputId)
                 .setParameter("limit", limit);
-
-        if (lastId != null) {
-            query.setParameter("lastId", lastId);
-        }
 
         @SuppressWarnings("unchecked")
         List<Object[]> results = query.getResultList();
-
         List<Collegamenti> collegamentiList = new ArrayList<>(results.size());
 
         for (Object[] row : results) {
-            Collegamenti c = new Collegamenti();
             int idx = 0;
-
-            c.setId(((Number) row[idx++]).longValue());
-
-            c.setIngestion(row[idx] != null
-                    ? entityManager.getReference(Ingestion.class, ((Number) row[idx]).longValue())
-                    : null);
-            idx++;
-
-            c.setSubmission(row[idx] != null
-                    ? entityManager.getReference(Submission.class, ((Number) row[idx]).longValue())
-                    : null);
-            idx++;
-
-            c.setIntermediario(row[idx] != null ? String.valueOf(row[idx]) : null);
-            idx++;
-
-            c.setChiaveRapporto(row[idx] != null ? String.valueOf(row[idx]) : null);
-            idx++;
-
-            c.setNdg(row[idx] != null ? String.valueOf(row[idx]) : null);
-            idx++;
-
-            c.setRuolo(row[idx] != null ? String.valueOf(row[idx]) : null);
-            idx++;
-
-            c.setDataInizioCollegamento(row[idx] != null ? String.valueOf(row[idx]) : null);
-            idx++;
-
-            c.setDataFineCollegamento(row[idx] != null ? String.valueOf(row[idx]) : null);
-            idx++;
-
-            c.setRuoloInterno(row[idx] != null ? String.valueOf(row[idx]) : null);
-            idx++;
-
-            c.setFlagStatoCollegamento(row[idx] != null ? String.valueOf(row[idx]) : null);
-            idx++;
-
-            c.setDataPredisposizioneFlusso(row[idx] != null ? String.valueOf(row[idx]) : null);
-            idx++;
-
-            c.setControlloDiFineRiga(row[idx] != null ? String.valueOf(row[idx]) : null);
-            idx++;
-
-            c.setCreatedAt(row[idx] != null
-                    ? ((java.sql.Timestamp) row[idx]).toLocalDateTime()
-                    : null);
-            idx++;
-
-            c.setOutput(row[idx] != null
-                    ? entityManager.getReference(Output.class, ((Number) row[idx]).longValue())
-                    : null);
+            
+            // Parse Collegamenti (15 fields)
+            Collegamenti c = new Collegamenti();
+            c.setId(getLong(row[idx++]));
+            c.setIngestion(row[idx] != null ? entityManager.getReference(Ingestion.class, getLong(row[idx])) : null); idx++;
+            c.setSubmission(row[idx] != null ? entityManager.getReference(Submission.class, getLong(row[idx])) : null); idx++;
+            c.setIntermediario(getString(row[idx++]));
+            c.setChiaveRapporto(getString(row[idx++]));
+            c.setNdg(getString(row[idx++]));
+            c.setRuolo(getString(row[idx++]));
+            c.setDataInizioCollegamento(getString(row[idx++]));
+            c.setDataFineCollegamento(getString(row[idx++]));
+            c.setRuoloInterno(getString(row[idx++]));
+            c.setFlagStatoCollegamento(getString(row[idx++]));
+            c.setDataPredisposizioneFlusso(getString(row[idx++]));
+            c.setControlloDiFineRiga(getString(row[idx++]));
+            c.setCreatedAt(row[idx] != null ? ((java.sql.Timestamp) row[idx]).toLocalDateTime() : null); idx++;
+            c.setOutput(row[idx] != null ? entityManager.getReference(Output.class, getLong(row[idx])) : null); idx++;
+            
+            // Parse Rapporti (18 fields) - if exists
+            if (row[idx] != null) {
+                Rapporti r = new Rapporti();
+                r.setId(getLong(row[idx++]));
+                r.setIngestion(row[idx] != null ? entityManager.getReference(Ingestion.class, getLong(row[idx])) : null); idx++;
+                r.setSubmission(row[idx] != null ? entityManager.getReference(Submission.class, getLong(row[idx])) : null); idx++;
+                r.setIntermediario(getString(row[idx++]));
+                r.setChiaveRapporto(getString(row[idx++]));
+                r.setTipoRapportoInterno(getString(row[idx++]));
+                r.setFormaTecnica(getString(row[idx++]));
+                r.setFiliale(getString(row[idx++]));
+                r.setCab(getString(row[idx++]));
+                r.setNumeroConto(getString(row[idx++]));
+                r.setCin(getString(row[idx++]));
+                r.setDivisa(getString(row[idx++]));
+                r.setDataInizioRapporto(getString(row[idx++]));
+                r.setDataFineRapporto(getString(row[idx++]));
+                r.setNote(getString(row[idx++]));
+                r.setFlagStatoRapporto(getString(row[idx++]));
+                r.setDataPredisposizione(getString(row[idx++]));
+                r.setControlloDiFineRiga(getString(row[idx++]));
+                c.setRapporto(r);
+            } else {
+                idx += 18; // Skip Rapporti fields
+            }
+            
+            // Parse Soggetti (17 fields) - if exists
+            if (row[idx] != null) {
+                Soggetti s = new Soggetti();
+                s.setId(getLong(row[idx++]));
+                s.setIngestion(row[idx] != null ? entityManager.getReference(Ingestion.class, getLong(row[idx])) : null); idx++;
+                s.setSubmission(row[idx] != null ? entityManager.getReference(Submission.class, getLong(row[idx])) : null); idx++;
+                s.setIntermediario(getString(row[idx++]));
+                s.setNdg(getString(row[idx++]));
+                s.setDataCensimentoAnagrafico(getString(row[idx++]));
+                s.setDataEstinzioneAnagrafica(getString(row[idx++]));
+                s.setFilialeCensimentoAnagrafico(getString(row[idx++]));
+                s.setTipoSoggetto(getString(row[idx++]));
+                s.setNaturaGiuridica(getString(row[idx++]));
+                s.setSesso(getString(row[idx++]));
+                s.setCodiceFiscale(getString(row[idx++]));
+                s.setCognome(getString(row[idx++]));
+                s.setNome(getString(row[idx++]));
+                s.setDataNascita(getString(row[idx++]));
+                s.setComune(getString(row[idx++]));
+                s.setProvincia(getString(row[idx++]));
+                c.setSoggetto(s);
+            } else {
+                idx += 17; // Skip Soggetti fields
+            }
+            
+            // Parse DatiContabili (26 fields) - if exists
+            if (row[idx] != null) {
+                DatiContabili d = new DatiContabili();
+                d.setId(getLong(row[idx++]));
+                d.setIngestion(row[idx] != null ? entityManager.getReference(Ingestion.class, getLong(row[idx])) : null); idx++;
+                d.setSubmission(row[idx] != null ? entityManager.getReference(Submission.class, getLong(row[idx])) : null); idx++;
+                d.setIntermediario(getString(row[idx++]));
+                d.setChiaveRapporto(getString(row[idx++]));
+                d.setAnnoDiRiferimento(getString(row[idx++]));
+                d.setPeriodicita(getString(row[idx++]));
+                d.setProgressivoPeriodicita(getString(row[idx++]));
+                d.setDivisa(getString(row[idx++]));
+                d.setDataInizioRiferimento(getString(row[idx++]));
+                d.setDataFineRiferimento(getString(row[idx++]));
+                d.setImportoSaldoIniziale(getString(row[idx++]));
+                d.setImportoSaldoFinale(getString(row[idx++]));
+                d.setTotaleOperazioniAttive(getString(row[idx++]));
+                d.setTotaleOperazioniPassive(getString(row[idx++]));
+                d.setGiacenzaMedia(getString(row[idx++]));
+                d.setFlagSogliaSaldoIniziale(getString(row[idx++]));
+                d.setFlagSogliaSaldoFinale(getString(row[idx++]));
+                d.setFlagSogliaOperazioniAttive(getString(row[idx++]));
+                d.setFlagSogliaOperazioniPassive(getString(row[idx++]));
+                d.setFlagSogliaGiacenzaMedia(getString(row[idx++]));
+                d.setAltreInformazioni(getString(row[idx++]));
+                d.setFlagStatoImporto(getString(row[idx++]));
+                d.setDataPredisposizione(getString(row[idx++]));
+                d.setTipoRapportoInterno(getString(row[idx++]));
+                d.setFormaTecnica(getString(row[idx++]));
+                c.setDatiContabili(d);
+            } else {
+                idx += 26; // Skip DatiContabili fields
+            }
 
             collegamentiList.add(c);
         }
 
         return collegamentiList;
+    }
+    
+    // Helper methods for safe type conversion
+    private Long getLong(Object value) {
+        return value != null ? ((Number) value).longValue() : null;
+    }
+    
+    private String getString(Object value) {
+        return value != null ? String.valueOf(value) : null;
     }
 
     @Override
@@ -487,4 +540,24 @@ public class CollegamentiRepositoryImpl implements CollegamentiRepositoryCustom 
     }
 
 
+    @Override
+    public List<Object[]> findNdgAndChiaviByIds(List<Long> collegamentiIds) {
+        if (collegamentiIds == null || collegamentiIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        String nativeSql = """
+                SELECT DISTINCT c.ndg, c.chiave_rapporto
+                FROM MERCHANT_COLLEGAMENTI c
+                WHERE c.pk_collegamenti IN (:ids)
+                """;
+
+        Query query = entityManager.createNativeQuery(nativeSql);
+        query.setParameter("ids", collegamentiIds);
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> results = query.getResultList();
+
+        return results;
+    }
 }

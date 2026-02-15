@@ -446,14 +446,32 @@ public class StagingRepositoryImpl implements StagingRepository {
                           AND stg.ndg = dups.ndg
                           AND stg.pk_stg_merchant > dups.first_pk
                     SET stg.process_status = 2,
-                        stg.error_message = 'Duplicate within batch'
+                        stg.error_message = 'Duplicate within submission'
                     WHERE stg.fk_submission = :submissionId
                       AND stg.process_status IS NULL
                     """)
                 .setParameter("submissionId", submissionId)
                 .executeUpdate();
 
+        // Step 3: CRITICAL - Mark records with missing Collegamenti parent (FK validation)
+        // This MUST happen BEFORE the INSERT to prevent FK constraint violations
+        int missingParents = entityManager.createNativeQuery("""
+                    UPDATE STG_SOGGETTI stg
+                    LEFT JOIN MERCHANT_COLLEGAMENTI c 
+                        ON stg.ndg COLLATE utf8mb4_0900_ai_ci = c.ndg COLLATE utf8mb4_0900_ai_ci
+                        AND stg.fk_submission = c.fk_submission
+                    SET stg.process_status = 3,
+                        stg.error_message = CONCAT('Missing Collegamenti parent for ndg: ', stg.ndg)
+                    WHERE stg.fk_submission = :submissionId
+                      AND stg.process_status IS NULL
+                      AND c.pk_collegamenti IS NULL
+                    """)
+                .setParameter("submissionId", submissionId)
+                .executeUpdate();
+
         int totalDuplicates = existingDuplicates + batchDuplicates;
+        
+        log.info("Soggetti validation: duplicates={}, missingParents={}", totalDuplicates, missingParents);
 
         // Step 3: Insert new records (Synchronized with Soggetti entity fields)
         int insertedCount = entityManager.createNativeQuery("""
@@ -490,10 +508,10 @@ public class StagingRepositoryImpl implements StagingRepository {
                 .executeUpdate();
 
         long elapsed = System.currentTimeMillis() - startTime;
-        log.info("Processed soggetti from staging in {}ms: inserted={}, duplicates={}",
-                elapsed, insertedCount, totalDuplicates);
+        log.info("Processed soggetti from staging in {}ms: inserted={}, duplicates={}, missingParents={}",
+                elapsed, insertedCount, totalDuplicates, missingParents);
 
-        return new StagingResult(insertedCount, totalDuplicates);
+        return new StagingResult(insertedCount, totalDuplicates, missingParents, 0);
     }
 
     @Override
@@ -531,14 +549,32 @@ public class StagingRepositoryImpl implements StagingRepository {
                           AND stg.chiave_rapporto = dups.chiave_rapporto
                           AND stg.pk_stg_rapporti > dups.first_pk
                     SET stg.process_status = 2,
-                        stg.error_message = 'Duplicate within batch'
+                        stg.error_message = 'Duplicate within submission'
                     WHERE stg.fk_submission = :submissionId
                       AND stg.process_status IS NULL
                     """)
                 .setParameter("submissionId", submissionId)
                 .executeUpdate();
 
+        // Step 3: CRITICAL - Mark records with missing Collegamenti parent (FK validation)
+        // This MUST happen BEFORE the INSERT to prevent FK constraint violations
+        int missingParents = entityManager.createNativeQuery("""
+                    UPDATE STG_RAPPORTI stg
+                    LEFT JOIN MERCHANT_COLLEGAMENTI c 
+                        ON stg.chiave_rapporto COLLATE utf8mb4_0900_ai_ci = c.chiave_rapporto COLLATE utf8mb4_0900_ai_ci
+                        AND stg.fk_submission = c.fk_submission
+                    SET stg.process_status = 3,
+                        stg.error_message = CONCAT('Missing Collegamenti parent for chiave_rapporto: ', stg.chiave_rapporto)
+                    WHERE stg.fk_submission = :submissionId
+                      AND stg.process_status IS NULL
+                      AND c.pk_collegamenti IS NULL
+                    """)
+                .setParameter("submissionId", submissionId)
+                .executeUpdate();
+
         int totalDuplicates = existingDuplicates + batchDuplicates;
+        
+        log.info("Rapporti validation: duplicates={}, missingParents={}", totalDuplicates, missingParents);
 
         // Step 3: Insert new records with ALL columns from the entity
         int insertedCount = entityManager.createNativeQuery("""
@@ -573,9 +609,10 @@ public class StagingRepositoryImpl implements StagingRepository {
                 .executeUpdate();
 
         long elapsed = System.currentTimeMillis() - startTime;
-        log.info("Processed rapporti in {}ms: inserted={}, duplicates={}", elapsed, insertedCount, totalDuplicates);
+        log.info("Processed rapporti in {}ms: inserted={}, duplicates={}, missingParents={}", 
+                elapsed, insertedCount, totalDuplicates, missingParents);
 
-        return new StagingResult(insertedCount, totalDuplicates);
+        return new StagingResult(insertedCount, totalDuplicates, missingParents, 0);
     }
 
     @Override
@@ -617,14 +654,32 @@ public class StagingRepositoryImpl implements StagingRepository {
                           AND stg.progressivo_periodicita = dups.progressivo_periodicita 
                           AND stg.pk_stg_dati_contabili > dups.first_pk
                     SET stg.process_status = 2,
-                        stg.error_message = 'Duplicate within batch'
+                        stg.error_message = 'Duplicate within submission'
                     WHERE stg.fk_submission = :submissionId
                       AND stg.process_status IS NULL
                     """)
                 .setParameter("submissionId", submissionId)
                 .executeUpdate();
 
+        // Step 3: CRITICAL - Mark records with missing Collegamenti parent (FK validation)
+        // This MUST happen BEFORE the INSERT to prevent FK constraint violations
+        int missingParents = entityManager.createNativeQuery("""
+                    UPDATE STG_DATI_CONTABILI stg
+                    LEFT JOIN MERCHANT_COLLEGAMENTI c 
+                        ON stg.chiave_rapporto COLLATE utf8mb4_0900_ai_ci = c.chiave_rapporto COLLATE utf8mb4_0900_ai_ci
+                        AND stg.fk_submission = c.fk_submission
+                    SET stg.process_status = 3,
+                        stg.error_message = CONCAT('Missing Collegamenti parent for chiave_rapporto: ', stg.chiave_rapporto)
+                    WHERE stg.fk_submission = :submissionId
+                      AND stg.process_status IS NULL
+                      AND c.pk_collegamenti IS NULL
+                    """)
+                .setParameter("submissionId", submissionId)
+                .executeUpdate();
+
         int totalDuplicates = existingDuplicates + batchDuplicates;
+        
+        log.info("DatiContabili validation: duplicates={}, missingParents={}", totalDuplicates, missingParents);
 
         // Step 3: Insert (Fully mapping all 25+ fields from the Entity)
         int insertedCount = entityManager.createNativeQuery("""
@@ -666,8 +721,9 @@ public class StagingRepositoryImpl implements StagingRepository {
                 .executeUpdate();
 
         long elapsed = System.currentTimeMillis() - startTime;
-        log.info("Processed dati contabili in {}ms: inserted={}, duplicates={}", elapsed, insertedCount, totalDuplicates);
-        return new StagingResult(insertedCount, totalDuplicates);
+        log.info("Processed dati contabili in {}ms: inserted={}, duplicates={}, missingParents={}", 
+                elapsed, insertedCount, totalDuplicates, missingParents);
+        return new StagingResult(insertedCount, totalDuplicates, missingParents, 0);
     }
 
     @Override
@@ -680,44 +736,68 @@ public class StagingRepositoryImpl implements StagingRepository {
         entityManager.createNativeQuery("SET foreign_key_checks = 0").executeUpdate();
 
         try {
-            // Step 1: Global Dups (with Collation fix)
+            // Step 1: Mark duplicates that already exist in MERCHANT_COLLEGAMENTI
+            // Check both unique constraints: (ndg, fk_submission) AND (chiave_rapporto, fk_submission)
             int existingDuplicates = entityManager.createNativeQuery("""
                         UPDATE STG_COLLEGAMENTI stg
                         INNER JOIN MERCHANT_COLLEGAMENTI mc
-                            ON stg.intermediario COLLATE utf8mb4_0900_ai_ci = mc.intermediario COLLATE utf8mb4_0900_ai_ci
-                            AND stg.chiave_rapporto COLLATE utf8mb4_0900_ai_ci = mc.chiave_rapporto COLLATE utf8mb4_0900_ai_ci
-                            AND stg.ndg COLLATE utf8mb4_0900_ai_ci = mc.ndg COLLATE utf8mb4_0900_ai_ci
-                            AND stg.fk_submission = mc.fk_submission
+                            ON ((stg.ndg COLLATE utf8mb4_0900_ai_ci = mc.ndg COLLATE utf8mb4_0900_ai_ci
+                                 AND stg.fk_submission = mc.fk_submission)
+                                OR
+                                (stg.chiave_rapporto COLLATE utf8mb4_0900_ai_ci = mc.chiave_rapporto COLLATE utf8mb4_0900_ai_ci
+                                 AND stg.fk_submission = mc.fk_submission))
                         SET stg.process_status = 2,
-                            stg.error_message = 'Duplicate: collegamento already exists'
+                            stg.error_message = 'Duplicate: collegamento already exists in database'
                         WHERE stg.fk_submission = :submissionId
                           AND stg.process_status IS NULL
                         """)
                     .setParameter("submissionId", submissionId)
                     .executeUpdate();
 
-            // Step 2: Batch Dups
-            int batchDuplicates = entityManager.createNativeQuery("""
+            // Step 2a: Mark duplicates within batch based on (ndg, fk_submission)
+            int batchDuplicatesNdg = entityManager.createNativeQuery("""
                         UPDATE STG_COLLEGAMENTI stg
                         INNER JOIN (
-                            SELECT intermediario, chiave_rapporto, ndg, MIN(pk_stg_collegamenti) as first_pk
+                            SELECT ndg, fk_submission, MIN(pk_stg_collegamenti) as first_pk
                             FROM STG_COLLEGAMENTI
                             WHERE fk_submission = :submissionId AND process_status IS NULL
-                            GROUP BY intermediario, chiave_rapporto, ndg
+                            GROUP BY ndg, fk_submission
                             HAVING COUNT(*) > 1
-                        ) dups ON stg.intermediario = dups.intermediario 
-                              AND stg.chiave_rapporto = dups.chiave_rapporto 
-                              AND stg.ndg = dups.ndg 
+                        ) dups ON stg.ndg = dups.ndg 
+                              AND stg.fk_submission = dups.fk_submission
                               AND stg.pk_stg_collegamenti > dups.first_pk
                         SET stg.process_status = 2,
-                            stg.error_message = 'Duplicate within batch'
+                            stg.error_message = 'Duplicate within submission: same ndg'
                         WHERE stg.fk_submission = :submissionId
                           AND stg.process_status IS NULL
                         """)
                     .setParameter("submissionId", submissionId)
                     .executeUpdate();
 
-            int totalDuplicates = existingDuplicates + batchDuplicates;
+            // Step 2b: Mark duplicates within batch based on (chiave_rapporto, fk_submission)
+            int batchDuplicatesChiave = entityManager.createNativeQuery("""
+                        UPDATE STG_COLLEGAMENTI stg
+                        INNER JOIN (
+                            SELECT chiave_rapporto, fk_submission, MIN(pk_stg_collegamenti) as first_pk
+                            FROM STG_COLLEGAMENTI
+                            WHERE fk_submission = :submissionId AND process_status IS NULL
+                            GROUP BY chiave_rapporto, fk_submission
+                            HAVING COUNT(*) > 1
+                        ) dups ON stg.chiave_rapporto = dups.chiave_rapporto 
+                              AND stg.fk_submission = dups.fk_submission
+                              AND stg.pk_stg_collegamenti > dups.first_pk
+                        SET stg.process_status = 2,
+                            stg.error_message = 'Duplicate within submission: same chiave_rapporto'
+                        WHERE stg.fk_submission = :submissionId
+                          AND stg.process_status IS NULL
+                        """)
+                    .setParameter("submissionId", submissionId)
+                    .executeUpdate();
+
+            int totalDuplicates = existingDuplicates + batchDuplicatesNdg + batchDuplicatesChiave;
+            
+            log.info("Collegamenti duplicate detection: existing={}, batch_ndg={}, batch_chiave={}, total={}",
+                    existingDuplicates, batchDuplicatesNdg, batchDuplicatesChiave, totalDuplicates);
 
             // Step 3: Insert all non-duplicate records (no FK validation for collegamenti)
             // Collegamenti is the base entity, other entities will be validated against it
@@ -813,7 +893,7 @@ public class StagingRepositoryImpl implements StagingRepository {
                           AND stg.ndg_nuovo = dups.ndg_nuovo 
                           AND stg.pk_stg_cambio_ndg > dups.first_pk
                     SET stg.process_status = 2,
-                        stg.error_message = 'Duplicate within batch'
+                        stg.error_message = 'Duplicate within submission'
                     WHERE stg.fk_submission = :submissionId
                       AND stg.process_status IS NULL
                     """)
@@ -924,15 +1004,10 @@ public class StagingRepositoryImpl implements StagingRepository {
     public List<Object[]> getMissingSoggettiCollegamentiDetails(Long submissionId) {
         @SuppressWarnings("unchecked")
         List<Object[]> results = entityManager.createNativeQuery("""
-                SELECT stg.raw_row, 
-                       CONCAT('Missing Collegamenti parent for ndg: ', stg.ndg) as error_message
-                FROM STG_SOGGETTI stg
-                LEFT JOIN MERCHANT_COLLEGAMENTI c 
-                    ON stg.ndg = c.ndg 
-                    AND stg.fk_submission = c.fk_submission
-                WHERE stg.fk_submission = :submissionId
-                  AND stg.process_status IS NULL
-                  AND c.pk_collegamenti IS NULL
+                SELECT raw_row, error_message
+                FROM STG_SOGGETTI
+                WHERE fk_submission = :submissionId
+                  AND process_status = 3
                 """)
                 .setParameter("submissionId", submissionId)
                 .getResultList();
@@ -944,15 +1019,10 @@ public class StagingRepositoryImpl implements StagingRepository {
     public List<Object[]> getMissingRapportiCollegamentiDetails(Long submissionId) {
         @SuppressWarnings("unchecked")
         List<Object[]> results = entityManager.createNativeQuery("""
-                SELECT stg.raw_row, 
-                       CONCAT('Missing Collegamenti parent for chiave_rapporto: ', stg.chiave_rapporto) as error_message
-                FROM STG_RAPPORTI stg
-                LEFT JOIN MERCHANT_COLLEGAMENTI c 
-                    ON stg.chiave_rapporto = c.chiave_rapporto 
-                    AND stg.fk_submission = c.fk_submission
-                WHERE stg.fk_submission = :submissionId
-                  AND stg.process_status IS NULL
-                  AND c.pk_collegamenti IS NULL
+                SELECT raw_row, error_message
+                FROM STG_RAPPORTI
+                WHERE fk_submission = :submissionId
+                  AND process_status = 3
                 """)
                 .setParameter("submissionId", submissionId)
                 .getResultList();
@@ -964,15 +1034,10 @@ public class StagingRepositoryImpl implements StagingRepository {
     public List<Object[]> getMissingDatiContabiliCollegamentiDetails(Long submissionId) {
         @SuppressWarnings("unchecked")
         List<Object[]> results = entityManager.createNativeQuery("""
-                SELECT stg.raw_row, 
-                       CONCAT('Missing Collegamenti parent for chiave_rapporto: ', stg.chiave_rapporto) as error_message
-                FROM STG_DATI_CONTABILI stg
-                LEFT JOIN MERCHANT_COLLEGAMENTI c 
-                    ON stg.chiave_rapporto = c.chiave_rapporto 
-                    AND stg.fk_submission = c.fk_submission
-                WHERE stg.fk_submission = :submissionId
-                  AND stg.process_status IS NULL
-                  AND c.pk_collegamenti IS NULL
+                SELECT raw_row, error_message
+                FROM STG_DATI_CONTABILI
+                WHERE fk_submission = :submissionId
+                  AND process_status = 3
                 """)
                 .setParameter("submissionId", submissionId)
                 .getResultList();
