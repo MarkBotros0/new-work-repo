@@ -17,6 +17,8 @@ import java.util.List;
  */
 @Repository
 public interface RapportiRepository extends JpaRepository<Rapporti, Long>, RapportiRepositoryCustom {
+    long countByIngestionId(Long ingestionId);
+
     @Modifying
     @Query("UPDATE Rapporti c SET c.output = :output WHERE c.id IN :ids")
     void updateOutputForeignKey(@Param("ids") List<Long> rapportiIds, @Param("output") Output output);
@@ -37,4 +39,11 @@ public interface RapportiRepository extends JpaRepository<Rapporti, Long>, Rappo
             WHERE r.submission.id = :submissionId
             """)
     int deleteBySubmissionId(@Param("submissionId") Long submissionId);
+
+    @Query("""
+              SELECT COUNT(t)
+              FROM Rapporti r
+              WHERE r.submission.id = :submissionId
+            """)
+    long countBySubmissionId(@Param("submissionId") Long submissionId);
 }

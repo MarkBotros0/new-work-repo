@@ -63,6 +63,18 @@ public class ValidationServiceImpl implements ValidationService {
     private TransactionRepository transactionRepository;
 
     @Autowired
+    private SoggettiRepository soggettiRepository;
+
+    @Autowired
+    private RapportiRepository rapportiRepository;
+
+    @Autowired
+    private DatiContabiliRepository datiContabiliRepository;
+
+    @Autowired
+    private CollegamentiRepository collegamentiRepository;
+
+    @Autowired
     private IngestionRepository ingestionRepository;
 
     @Autowired
@@ -339,31 +351,38 @@ public class ValidationServiceImpl implements ValidationService {
 
         // Get transaction counts (already optimized)
         queryStart = System.currentTimeMillis();
-        long totalTransactions = transactionRepository.countTransactionsBySubmission(submissionId);
-        log.info("Total transactions query took {}ms, result={}", System.currentTimeMillis() - queryStart, totalTransactions);
+        long totalSoggetti = soggettiRepository.countBySubmissionId(submissionId);
+        long totalRapporti = rapportiRepository.countBySubmissionId(submissionId);
+        long totalDatiContabili = datiContabiliRepository.countBySubmissionId(submissionId);
+        long totalCollegamenti = collegamentiRepository.countBySubmissionId(submissionId);
+
+        long totalTransactions = totalSoggetti + totalRapporti + totalDatiContabili + totalCollegamenti;
+        log.info("Total transactions query took {}ms, Count={}", System.currentTimeMillis() - queryStart, totalTransactions);
         
         queryStart = System.currentTimeMillis();
-        long totalTransactionsWithErrorCount = errorRecordRepository.countErrorRecordsBySubmissionAndIngestionType(
+        long totalSoggetiWithErrorCount = errorRecordRepository.countErrorRecordsBySubmissionAndIngestionType(
                 submissionId,
                 IngestionTypeEnum.SOGGETTI.getLabel());
-        log.info("Total transactions with error query took {}ms, result={}", System.currentTimeMillis() - queryStart, totalTransactionsWithErrorCount);
+        long totalRapportiWithErrorCount = errorRecordRepository.countErrorRecordsBySubmissionAndIngestionType(
+                submissionId,
+                IngestionTypeEnum.RAPPORTI.getLabel());
+        long totalDatiContabiliWithErrorCount = errorRecordRepository.countErrorRecordsBySubmissionAndIngestionType(
+                submissionId,
+                IngestionTypeEnum.DATI_CONTABILI.getLabel());
+        long totalCollegamentiWithErrorCount = errorRecordRepository.countErrorRecordsBySubmissionAndIngestionType(
+                submissionId,
+                IngestionTypeEnum.COLLEGAMENTI.getLabel());
+//        log.info("Total transactions with error query took {}ms, result={}", System.currentTimeMillis() - queryStart, totalTransactionsWithErrorCount);
 
-        // Use optimized native SQL GROUP BY queries instead of loading all ErrorCause entities and grouping in memory
-        queryStart = System.currentTimeMillis();
+
         List<ErrorTypeCountDTO> errorTypeCounts = errorCauseRepository.findErrorTypeCountsBySubmissionIdAndSeverityNative(
                         submissionId,
                         SeverityEnum.ERROR.getLevel()
                 );
-        log.info("Error type counts query took {}ms, resultCount={}", System.currentTimeMillis() - queryStart, errorTypeCounts.size());
-
-        queryStart = System.currentTimeMillis();
         List<ErrorTypeCountDTO> warningTypeCounts = errorCauseRepository.findErrorTypeCountsBySubmissionIdAndSeverityNative(
                         submissionId,
                         SeverityEnum.WARNING.getLevel()
                 );
-        log.info("Warning type counts query took {}ms, resultCount={}", System.currentTimeMillis() - queryStart, warningTypeCounts.size());
-
-        // Convert DTOs to ValidationReason (lightweight transformation)
         List<ValidationReason> errorReasons = errorTypeCounts.stream()
                 .map(dto -> new ValidationReason(dto.errorTypeName(), dto.errorCode(), dto.count()))
                 .collect(Collectors.toList());
@@ -378,10 +397,16 @@ public class ValidationServiceImpl implements ValidationService {
         long totalDuration = System.currentTimeMillis() - methodStartTime;
         log.info("buildValidationFromSubmissions completed in {}ms for submissionId={}", totalDuration, submissionId);
 
+        IssuesGroup soggetiIssuesGroup = new IssuesGroup(errorGroup, warningGroup);
+        IssuesGroup rapportiIssuesGroup = new IssuesGroup(errorGroup, warningGroup);
+        IssuesGroup datiContabiliIssuesGroup = new IssuesGroup(errorGroup, warningGroup);
+        IssuesGroup collegamentiIssuesGroup = new IssuesGroup(errorGroup, warningGroup);
+
         return new ValidationPageDTO(
                 totalTransactions,
-                totalTransactionsWithErrorCount,
-                errorGroup,
-                warningGroup);
+                rapportiIssuesGroup,
+                soggetiIssuesGroup,
+                collegamentiIssuesGroup,
+                datiContabiliIssuesGroup);
     }
 }

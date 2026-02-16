@@ -19,6 +19,7 @@ import jakarta.transaction.Transactional;
  */
 @Repository
 public interface CollegamentiRepository extends JpaRepository<Collegamenti, Long>, CollegamentiRepositoryCustom {
+    long countByIngestionId(Long ingestionId);
 
     @Modifying
     @Query("UPDATE Collegamenti c SET c.output = :output WHERE c.id IN :ids")
@@ -72,4 +73,10 @@ public interface CollegamentiRepository extends JpaRepository<Collegamenti, Long
             """)
     List<RapportoRowDTO> buildOutputRowsBySubmission(Long submissionId);
 
+    @Query("""
+              SELECT COUNT(t)
+              FROM Collegamenti c
+              WHERE c.submission.id = :submissionId
+            """)
+    long countBySubmissionId(@Param("submissionId") Long submissionId);
 }

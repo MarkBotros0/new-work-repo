@@ -17,6 +17,8 @@ import java.util.List;
  */
 @Repository
 public interface SoggettiRepository extends JpaRepository<Soggetti, Long>, SoggettiRepositoryCustom {
+    long countByIngestionId(Long ingestionId);
+
     @Modifying
     @Query("UPDATE Soggetti c SET c.output = :output WHERE c.id IN :ids")
     void updateOutputForeignKey(@Param("ids") List<Long> soggettiIds, @Param("output") Output output);
@@ -37,4 +39,11 @@ public interface SoggettiRepository extends JpaRepository<Soggetti, Long>, Sogge
             WHERE s.submission.id = :submissionId
             """)
     int deleteBySubmissionId(@Param("submissionId") Long submissionId);
+
+    @Query("""
+              SELECT COUNT(t)
+              FROM Soggetti s
+              WHERE s.submission.id = :submissionId
+            """)
+    long countBySubmissionId(@Param("submissionId") Long submissionId);
 }

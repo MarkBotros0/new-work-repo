@@ -70,8 +70,9 @@ public interface ErrorRecordRepository extends JpaRepository<ErrorRecord, Long>,
             FROM ErrorRecord er
             JOIN er.ingestion i
             WHERE i.id = :ingestionId
+            AND i.ingestionType.name = : ingestionTypeName
             """)
-    Long countErrorRecordsByIngestionId(@Param("ingestionId") Long ingestionId);
+    Long countErrorRecordsByIngestionIdAndIngestionTypeName(@Param("ingestionId") Long ingestionId, @Param("ingestionTypeName") String ingestionTypeName);
 
     List<ErrorRecord> findByIngestionId(@Param("ingestionId") Long ingestionId);
 

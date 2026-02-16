@@ -111,13 +111,8 @@ public class ErrorCauseRepositoryImpl implements ErrorCauseRepositoryCustom {
     }
 
     @Override
-    @Transactional(readOnly = true, timeout = 180) // 3 minutes for read-only aggregation queries
+    @Transactional(readOnly = true, timeout = 180)
     public List<ErrorTypeCountDTO> findErrorTypeCountsBySubmissionIdAndSeverityNative(Long submissionId, Integer severity) {
-        long startTime = System.currentTimeMillis();
-        log.debug("Starting findErrorTypeCountsBySubmissionIdAndSeverityNative for submissionId={}, severity={}", submissionId, severity);
-        
-        // OPTIMIZED: Filter ERROR_TYPE first, then join with ERROR_RECORD filtered by submission
-        // This reduces the dataset before GROUP BY and DISTINCT operations
         String nativeSql = """
             SELECT 
                 et.pk_error_type AS errorTypeId,
@@ -152,11 +147,7 @@ public class ErrorCauseRepositoryImpl implements ErrorCauseRepositoryCustom {
             
             dtos.add(new ErrorTypeCountDTO(errorTypeId, errorTypeName, errorCode, count));
         }
-        
-        long duration = System.currentTimeMillis() - startTime;
-        log.info("findErrorTypeCountsBySubmissionIdAndSeverityNative completed in {}ms: submissionId={}, severity={}, resultCount={}", 
-                duration, submissionId, severity, dtos.size());
-        
+
         return dtos;
     }
 

@@ -22,17 +22,29 @@ public class DashboardStatsDTO {
     @JsonProperty("success")
     private Integer success;
 
-    @JsonProperty("total_transactions")
-    private Long totalTransactions;
+    @JsonProperty("soggettiReceived")
+    private Long soggettiReceived;
 
-    @JsonProperty("total_previous_period_transactions")
-    private Long totalPreviousTransactions;
+    @JsonProperty("soggettiAccepted")
+    private Long soggettiAccepted;
 
-    @JsonProperty("total_reportable_transactions")
-    private Long totalReportableTransactions;
+    @JsonProperty("rapportiReceived")
+    private Long rapportiReceived;
 
-    @JsonProperty("total_previous_reportable_transactions")
-    private Long totalPreviousReportableTransactions;
+    @JsonProperty("rapportiAccepted")
+    private Long rapportiAccepted;
+
+    @JsonProperty("collegamentiReceived")
+    private Long collegamentiReceived;
+
+    @JsonProperty("collegamentiAccepted")
+    private Long collegamentiAccepted;
+
+    @JsonProperty("datiContabiliReceived")
+    private Long datiContabiliReceived;
+
+    @JsonProperty("datiContabiliAccepted")
+    private Long datiContabiliAccepted;
 
     @JsonProperty("error")
     private Long error;
@@ -40,16 +52,15 @@ public class DashboardStatsDTO {
     @JsonProperty("warning")
     private Long warning;
 
-    @JsonProperty("obligation_registered_abandoned")
-    private Integer obligationRegisteredAbandoned;
+    @JsonProperty("obligationRejectedAbandoned")
+    private Integer obligationRejectedAbandoned;
 
-    @JsonProperty("obligation_total")
+    @JsonProperty("obligationTotal")
     private Integer obligationTotal;
 
-    @JsonProperty("obligation_approved")
+    @JsonProperty("obligationApproved")
     private Integer obligationApproved;
 
-    @JsonProperty("obligation_completed")
+    @JsonProperty("obligationCompleted")
     private Integer obligationCompleted;
-
 }

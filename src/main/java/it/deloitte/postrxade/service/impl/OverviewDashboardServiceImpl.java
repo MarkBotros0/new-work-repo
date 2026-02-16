@@ -8,11 +8,10 @@ import it.deloitte.postrxade.enums.IngestionTypeEnum;
 import it.deloitte.postrxade.enums.SeverityEnum;
 import it.deloitte.postrxade.enums.SubmissionStatusEnum;
 import it.deloitte.postrxade.exception.NotFoundRecordException;
-import it.deloitte.postrxade.repository.ErrorCauseRepository;
-import it.deloitte.postrxade.repository.ErrorRecordRepository;
-import it.deloitte.postrxade.repository.TransactionRepository;
+import it.deloitte.postrxade.repository.*;
 import it.deloitte.postrxade.service.ObligationService;
 import it.deloitte.postrxade.service.OverviewDashboardService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,22 +35,25 @@ import java.util.List;
 @Transactional
 public class OverviewDashboardServiceImpl implements OverviewDashboardService {
 
+    @Autowired
+    private ObligationService obligationService;
+    @Autowired
+    private TransactionRepository transactionRepository;
+    @Autowired
+    private SoggettiRepository soggettiRepository;
+    @Autowired
+    private RapportiRepository rapportiRepository;
+    @Autowired
+    private DatiContabiliRepository datiContabiliRepository;
+    @Autowired
+    private CollegamentiRepository collegamentiRepository;
+    @Autowired
+    private CambioNdgRepository cambioNdgRepository;
+    @Autowired
+    private ErrorRecordRepository errorRecordRepository;
+    @Autowired
+    private ErrorCauseRepository errorCauseRepository;
 
-    private final ObligationService obligationService;
-    private final TransactionRepository transactionRepository;
-    private final ErrorRecordRepository errorRecordRepository;
-    private final ErrorCauseRepository errorCauseRepository;
-
-    public OverviewDashboardServiceImpl(
-            ObligationService obligationService,
-            TransactionRepository transactionRepository,
-            ErrorRecordRepository errorRecordRepository,
-            ErrorCauseRepository errorCauseRepository) {
-        this.obligationService = obligationService;
-        this.transactionRepository = transactionRepository;
-        this.errorRecordRepository = errorRecordRepository;
-        this.errorCauseRepository = errorCauseRepository;
-    }
 
     /**
      * Retrieves the aggregated dashboard statistics for a given Fiscal Year and Period.
@@ -81,7 +83,7 @@ public class OverviewDashboardServiceImpl implements OverviewDashboardService {
         aggregateCurrentPeriodStats(submissions, stats);
 
         // 4. Single-Pass Aggregation for Previous Period
-        aggregatePastPeriodStats(preSubmissions, stats);
+//        aggregatePastPeriodStats(preSubmissions, stats);
         return stats;
     }
 
@@ -98,7 +100,19 @@ public class OverviewDashboardServiceImpl implements OverviewDashboardService {
         int ingProcessing = 0;
         int ingSuccess = 0;
 
-        long totalTrans = 0;
+        long soggettiReceived = 0;
+        long soggettiAccepted = 0;
+        long soggettiErrors = 0;
+        long rapportiReceived = 0;
+        long rapportiAccepted = 0;
+        long rapportiErrors = 0;
+        long collegamentiReceived = 0;
+        long collegamentiAccepted = 0;
+        long collegamentiErrors = 0;
+        long datiContabiliReceived = 0;
+        long datiContabiliAccepted = 0;
+        long datiContabiliErrors = 0;
+
         long totalErrors = 0;
         long totalErrorRecords = 0;
         long totalWarnings = 0;
@@ -134,8 +148,33 @@ public class OverviewDashboardServiceImpl implements OverviewDashboardService {
                         }
 
                         if (ingestion.getIngestionType().getName().equals(IngestionTypeEnum.SOGGETTI.getLabel())) {
-                            totalTrans = transactionRepository.countByIngestionId(ingestion.getId());
-                            totalErrorRecords += errorRecordRepository.countErrorRecordsByIngestionId(ingestion.getId());
+                            soggettiAccepted += soggettiRepository.countByIngestionId(ingestion.getId());
+                            soggettiErrors += errorRecordRepository.countErrorRecordsByIngestionIdAndIngestionTypeName(
+                                    ingestion.getId(), IngestionTypeEnum.SOGGETTI.getLabel());
+                            totalWarnings += errorCauseRepository.countByIngestionAndSeverity(ingestion.getId(), SeverityEnum.WARNING.getLevel());
+                            totalErrors += errorCauseRepository.countByIngestionAndSeverity(ingestion.getId(), SeverityEnum.ERROR.getLevel());
+                        }
+
+                        if (ingestion.getIngestionType().getName().equals(IngestionTypeEnum.RAPPORTI.getLabel())) {
+                            rapportiAccepted += rapportiRepository.countByIngestionId(ingestion.getId());
+                            rapportiErrors += errorRecordRepository.countErrorRecordsByIngestionIdAndIngestionTypeName(
+                                    ingestion.getId(), IngestionTypeEnum.RAPPORTI.getLabel());
+                            totalWarnings += errorCauseRepository.countByIngestionAndSeverity(ingestion.getId(), SeverityEnum.WARNING.getLevel());
+                            totalErrors += errorCauseRepository.countByIngestionAndSeverity(ingestion.getId(), SeverityEnum.ERROR.getLevel());
+                        }
+
+                        if (ingestion.getIngestionType().getName().equals(IngestionTypeEnum.DATI_CONTABILI.getLabel())) {
+                            datiContabiliAccepted += datiContabiliRepository.countByIngestionId(ingestion.getId());
+                            datiContabiliErrors += errorRecordRepository.countErrorRecordsByIngestionIdAndIngestionTypeName(
+                                    ingestion.getId(), IngestionTypeEnum.DATI_CONTABILI.getLabel());
+                            totalWarnings += errorCauseRepository.countByIngestionAndSeverity(ingestion.getId(), SeverityEnum.WARNING.getLevel());
+                            totalErrors += errorCauseRepository.countByIngestionAndSeverity(ingestion.getId(), SeverityEnum.ERROR.getLevel());
+                        }
+
+                        if (ingestion.getIngestionType().getName().equals(IngestionTypeEnum.COLLEGAMENTI.getLabel())) {
+                            collegamentiAccepted += collegamentiRepository.countByIngestionId(ingestion.getId());
+                            collegamentiErrors += errorRecordRepository.countErrorRecordsByIngestionIdAndIngestionTypeName(
+                                    ingestion.getId(), IngestionTypeEnum.COLLEGAMENTI.getLabel());
                             totalWarnings += errorCauseRepository.countByIngestionAndSeverity(ingestion.getId(), SeverityEnum.WARNING.getLevel());
                             totalErrors += errorCauseRepository.countByIngestionAndSeverity(ingestion.getId(), SeverityEnum.ERROR.getLevel());
                         }
@@ -145,7 +184,7 @@ public class OverviewDashboardServiceImpl implements OverviewDashboardService {
         }
 
         stats.setObligationTotal(submissions.size());
-        stats.setObligationRegisteredAbandoned(registeredAbandoned);
+        stats.setObligationRejectedAbandoned(registeredAbandoned);
         stats.setObligationApproved(approved);
         stats.setObligationCompleted(completed);
 
@@ -153,8 +192,14 @@ public class OverviewDashboardServiceImpl implements OverviewDashboardService {
         stats.setProcessing(ingProcessing);
         stats.setSuccess(ingSuccess);
 
-        stats.setTotalReportableTransactions(totalTrans);
-        stats.setTotalTransactions(totalTrans + totalErrorRecords);
+        stats.setSoggettiAccepted(soggettiAccepted);
+        stats.setSoggettiReceived(soggettiReceived + soggettiErrors);
+        stats.setSoggettiAccepted(soggettiAccepted);
+        stats.setSoggettiReceived(soggettiReceived + soggettiErrors);
+        stats.setSoggettiAccepted(soggettiAccepted);
+        stats.setSoggettiReceived(soggettiReceived + soggettiErrors);
+        stats.setSoggettiAccepted(soggettiAccepted);
+        stats.setSoggettiReceived(soggettiReceived + soggettiErrors);
 
         stats.setError(totalErrors);
         stats.setWarning(totalWarnings);
@@ -163,14 +208,14 @@ public class OverviewDashboardServiceImpl implements OverviewDashboardService {
     /**
      * Optimized method for Past Period (only needs Transaction stats).
      */
-    private void aggregatePastPeriodStats(List<Submission> submissions, DashboardStatsDTO stats) {
-        List<Long> submissionIds = submissions.stream().map(Submission::getId).toList();
-        long totalTrans = transactionRepository.countTransactionsBySubmissionIds(submissionIds);
-        long totalErrors = errorRecordRepository.countErrorRecordsBySubmissionIds(submissionIds);
-
-        stats.setTotalPreviousReportableTransactions(totalTrans);
-        stats.setTotalPreviousTransactions(totalTrans + totalErrors);
-    }
+//    private void aggregatePastPeriodStats(List<Submission> submissions, DashboardStatsDTO stats) {
+//        List<Long> submissionIds = submissions.stream().map(Submission::getId).toList();
+//        long totalTrans = transactionRepository.countTransactionsBySubmissionIds(submissionIds);
+//        long totalErrors = errorRecordRepository.countErrorRecordsBySubmissionIds(submissionIds);
+//
+//        stats.setTotalPreviousReportableTransactions(totalTrans);
+//        stats.setTotalPreviousTransactions(totalTrans + totalErrors);
+//    }
 
 
 }

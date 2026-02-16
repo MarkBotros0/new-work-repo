@@ -17,6 +17,8 @@ import java.util.List;
  */
 @Repository
 public interface DatiContabiliRepository extends JpaRepository<DatiContabili, Long>, DatiContabiliRepositoryCustom {
+    long countByIngestionId(Long ingestionId);
+
     @Modifying
     @Query("UPDATE DatiContabili c SET c.output = :output WHERE c.id IN :ids")
     void updateOutputForeignKey(@Param("ids") List<Long> datiContabiliIds, @Param("output") Output output);
@@ -37,4 +39,11 @@ public interface DatiContabiliRepository extends JpaRepository<DatiContabili, Lo
             WHERE dc.submission.id = :submissionId
             """)
     int deleteBySubmissionId(@Param("submissionId") Long submissionId);
+
+    @Query("""
+              SELECT COUNT(t)
+              FROM DatiContabili dc
+              WHERE dc.submission.id = :submissionId
+            """)
+    long countBySubmissionId(@Param("submissionId") Long submissionId);
 }
