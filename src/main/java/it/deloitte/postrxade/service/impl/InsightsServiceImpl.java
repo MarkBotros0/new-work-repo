@@ -4,6 +4,7 @@ import it.deloitte.postrxade.dto.*;
 import it.deloitte.postrxade.entity.*;
 import it.deloitte.postrxade.enums.IngestionTypeEnum;
 import it.deloitte.postrxade.enums.PaymentTypeEnum;
+import it.deloitte.postrxade.enums.SubmissionStatusEnum;
 import it.deloitte.postrxade.exception.NotFoundRecordException;
 import it.deloitte.postrxade.records.TransactionDateCount;
 import it.deloitte.postrxade.repository.*;
@@ -38,7 +39,17 @@ public class InsightsServiceImpl implements InsightsService {
     @Autowired
     private PeriodRepository periodRepository;
     @Autowired
+    private ObligationRepository obligationRepository;
+    @Autowired
     private TransactionRepository transactionRepository;
+    @Autowired
+    private SoggettiRepository soggettiRepository;
+    @Autowired
+    private RapportiRepository rapportiRepository;
+    @Autowired
+    private CollegamentiRepository collegamentiRepository;
+    @Autowired
+    private DatiContabiliRepository datiContabiliRepository;
     @Autowired
     private ErrorRecordRepository errorRecordRepository;
     @Autowired
@@ -55,22 +66,37 @@ public class InsightsServiceImpl implements InsightsService {
      * 3. Aggregates totals for both periods to allow comparison in the UI.
      *
      * @param fiscalYear The Fiscal Year.
-     * @param period     The Period Name.
+     * @param periodName     The Period Name.
      * @return {@link InsightsTransactionSummaryDTO} with current and past totals.
      * @throws NotFoundRecordException if current period data is corrupt (>1 active submission).
      */
     @Override
     @Transactional(readOnly = true)
-    public InsightsTransactionSummaryDTO getTransactionsSummary(Integer fiscalYear, String period) throws NotFoundRecordException {
-        Optional<Submission> activeSubmissionOpt = obligationService.getActiveSubmissionForStats(fiscalYear, period);
+    public InsightsTransactionSummaryDTO getTransactionsSummary(Integer fiscalYear, String periodName) throws NotFoundRecordException {
+//        Optional<Submission> activeSubmissionOpt = obligationService.getActiveSubmissionForStats(fiscalYear, period);
 
-        List<Submission> submissions = activeSubmissionOpt
-                .map(List::of)
-                .orElse(Collections.emptyList());
+        Period period = periodRepository.findByName(periodName).orElse(null);
+        ;
+        Obligation obligation = null;
+
+        if (period != null) {
+            obligation = obligationRepository.findByFiscalYearAndPeriod(fiscalYear, period).orElse(null);
+        }
+
+        List<Submission> submissions = new ArrayList<>();
+
+        if (obligation != null) {
+            submissions = obligation.getSubmissions().stream().filter(s -> {
+                return !s.getCurrentSubmissionStatus().getOrder().equals(SubmissionStatusEnum.ERROR.getOrder()) &&
+                        !s.getCurrentSubmissionStatus().getOrder().equals(SubmissionStatusEnum.CANCELLED.getOrder()) &&
+                        !s.getCurrentSubmissionStatus().getOrder().equals(SubmissionStatusEnum.REJECTED.getOrder());
+            }).toList();
+
+        }
 
         List<Submission> preSubmissions;
         try {
-            preSubmissions = obligationService.getSubmissionsFromPastPeriod(fiscalYear, period, 1);
+            preSubmissions = obligationService.getSubmissionsFromPastPeriod(fiscalYear, periodName, 1);
         } catch (NotFoundRecordException e) {
             preSubmissions = Collections.emptyList();
         }
@@ -188,7 +214,7 @@ public class InsightsServiceImpl implements InsightsService {
      */
     @Override
     @Transactional(readOnly = true)
-    public InsightsTransactionSankeyBreakdownDTO getTransactionsSankeyBreakdown(Integer fy, String period) throws NotFoundRecordException {
+    public InsightsTransactionSankeyBreakdownDTO getTransactionsSankeyBreakdown(Integer fy, String period, String type) throws NotFoundRecordException {
         Optional<Submission> activeSubmissionOpt = obligationService.getActiveSubmissionForStats(fy, period);
 
         List<Submission> activeSubmissions = activeSubmissionOpt
@@ -199,12 +225,21 @@ public class InsightsServiceImpl implements InsightsService {
 
         InsightsTransactionSankeyBreakdownDTO dto = new InsightsTransactionSankeyBreakdownDTO();
 
+        // Map type parameter to IngestionTypeEnum
+        String ingestionTypeLabel = type.toUpperCase();
+        IngestionTypeEnum ingestionType;
+        try {
+            ingestionType = IngestionTypeEnum.valueOf(ingestionTypeLabel);
+        } catch (IllegalArgumentException e) {
+            ingestionType = IngestionTypeEnum.SOGGETTI; // Default to SOGGETTI
+        }
+
         Map<String, Long> errorCounts = new HashMap<>();
         long totalNoErrorTransactions = transactionRepository.countTransactionsBySubmissionIds(submissionIds);
-        long errorRecords = errorRecordRepository.countErrorRecordsBySubmissionIdsAndIngestionType(submissionIds, IngestionTypeEnum.SOGGETTI.getLabel());
+        long errorRecords = errorRecordRepository.countErrorRecordsBySubmissionIdsAndIngestionType(submissionIds, ingestionType.getLabel());
 
         List<ErrorType> distinctErrorTypes = errorTypeRepository.findDistinctErrorTypesBySubmissionIdsAndIngestionType(
-                submissionIds, IngestionTypeEnum.SOGGETTI.getLabel());
+                submissionIds, ingestionType.getLabel());
 
         for (ErrorType errorType : distinctErrorTypes) {
             Long errorCount = errorCauseRepository.countBySubmissionsAndErrorType(submissionIds, errorType.getId());
@@ -214,7 +249,7 @@ public class InsightsServiceImpl implements InsightsService {
         long totalTransactions = totalNoErrorTransactions + errorRecords;
 
         int lastNode = 0;
-        dto.addItem("Transactions", 0, -1, totalTransactions);
+        dto.addItem("Records", 0, -1, totalTransactions);
 
         if (errorRecords != 0) {
             dto.addItem("Non Reportable", 0, 1, errorRecords);
@@ -380,21 +415,49 @@ public class InsightsServiceImpl implements InsightsService {
     /**
      * Helper to populate the summary DTO with transaction counts for current and previous periods.
      */
-    private void getInsightsStats(List<Submission> submissions, List<Submission> preSubmissions, InsightsTransactionSummaryDTO stats) {
+    private void getInsightsStats(List<Submission> submissions, List<Submission> prevSubmissions, InsightsTransactionSummaryDTO stats) {
         List<Long> submissoinIds = submissions.stream().map(Submission::getId).toList();
-        List<Long> preSubmissoinIds = preSubmissions.stream().map(Submission::getId).toList();
+        List<Long> prevSubmissoinIds = prevSubmissions.stream().map(Submission::getId).toList();
 
-        long totalNoErrorTransactions = transactionRepository.countTransactionsBySubmissionIds(submissoinIds);
-        long totalPreNoErrorTransactions = transactionRepository.countTransactionsBySubmissionIds(preSubmissoinIds);
+        long totalNoErrorSoggetti = soggettiRepository.countBySubmissionIn(submissoinIds);
+        long totalNoErrorRapporti = rapportiRepository.countBySubmissionIn(submissoinIds);
+        long totalNoErrorDatiContabili = datiContabiliRepository.countBySubmissionIn(submissoinIds);
+        long totalNoErrorCollegamenti = collegamentiRepository.countBySubmissionIn(submissoinIds);
 
-        long errors = errorRecordRepository.countErrorRecordsBySubmissionIdsAndIngestionType(submissoinIds, IngestionTypeEnum.SOGGETTI.getLabel());
-        long preErrors = errorRecordRepository.countErrorRecordsBySubmissionIds(preSubmissoinIds);
+        long totalPrevNoErrorSoggetti = soggettiRepository.countBySubmissionIn(prevSubmissoinIds);
+        long totalPrevNoErrorRapporti = rapportiRepository.countBySubmissionIn(prevSubmissoinIds);
+        long totalPrevNoErrorDatiContabili = datiContabiliRepository.countBySubmissionIn(prevSubmissoinIds);
+        long totalPrevNoErrorCollegamenti = collegamentiRepository.countBySubmissionIn(prevSubmissoinIds);
 
-        stats.setTotalTransactions(totalNoErrorTransactions + errors);
-        stats.setTotalReportableTransactions(totalNoErrorTransactions);
+        long soggetiErrors = errorRecordRepository.countErrorRecordsBySubmissionIdsAndIngestionType(submissoinIds, IngestionTypeEnum.SOGGETTI.getLabel());
+        long rapportiErrors = errorRecordRepository.countErrorRecordsBySubmissionIdsAndIngestionType(submissoinIds, IngestionTypeEnum.RAPPORTI.getLabel());
+        long datiCollegamentiErrors = errorRecordRepository.countErrorRecordsBySubmissionIdsAndIngestionType(submissoinIds, IngestionTypeEnum.DATI_CONTABILI.getLabel());
+        long collegamentiErrors = errorRecordRepository.countErrorRecordsBySubmissionIdsAndIngestionType(submissoinIds, IngestionTypeEnum.COLLEGAMENTI.getLabel());
 
-        stats.setTotalPreviousTransactions(totalPreNoErrorTransactions + preErrors);
-        stats.setTotalPreviousReportableTransactions(totalPreNoErrorTransactions);
+        long soggetiPrevErrors = errorRecordRepository.countErrorRecordsBySubmissionIdsAndIngestionType(prevSubmissoinIds, IngestionTypeEnum.SOGGETTI.getLabel());
+        long rapportiPrevErrors = errorRecordRepository.countErrorRecordsBySubmissionIdsAndIngestionType(prevSubmissoinIds, IngestionTypeEnum.RAPPORTI.getLabel());
+        long datiContabiliPrevErrors = errorRecordRepository.countErrorRecordsBySubmissionIdsAndIngestionType(prevSubmissoinIds, IngestionTypeEnum.DATI_CONTABILI.getLabel());
+        long collegamentiPrevErrors = errorRecordRepository.countErrorRecordsBySubmissionIdsAndIngestionType(prevSubmissoinIds, IngestionTypeEnum.COLLEGAMENTI.getLabel());
+
+        stats.setSoggettiAccepted(totalNoErrorSoggetti);
+        stats.setSoggettiReceived(totalNoErrorSoggetti + soggetiErrors);
+        stats.setPreviousSoggettiAccepted(totalPrevNoErrorSoggetti);
+        stats.setPreviousSoggettiReceived(totalPrevNoErrorSoggetti + soggetiPrevErrors);
+
+        stats.setRapportiAccepted(totalNoErrorRapporti);
+        stats.setRapportiReceived(totalNoErrorRapporti + rapportiErrors);
+        stats.setPreviousRapportiAccepted(totalPrevNoErrorRapporti);
+        stats.setPreviousRapportiReceived(totalPrevNoErrorRapporti + rapportiPrevErrors);
+
+        stats.setDatiContabiliAccepted(totalNoErrorDatiContabili);
+        stats.setDatiContabiliReceived(totalNoErrorDatiContabili + datiCollegamentiErrors);
+        stats.setPreviousDatiContabiliAccepted(totalPrevNoErrorDatiContabili);
+        stats.setPreviousDatiContabiliReceived(totalPrevNoErrorDatiContabili + datiContabiliPrevErrors);
+
+        stats.setCollegamentiAccepted(totalNoErrorCollegamenti);
+        stats.setCollegamentiReceived(totalNoErrorCollegamenti + collegamentiErrors);
+        stats.setPreviousCollegamentiAccepted(totalPrevNoErrorCollegamenti);
+        stats.setPreviousCollegamentiReceived(totalPrevNoErrorCollegamenti + collegamentiPrevErrors);
     }
 
     /**

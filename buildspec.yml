@@ -2,7 +2,7 @@ version: 0.2
 
 env:
   variables:
-    IMAGE_NAME: backend-pos/root
+    IMAGE_NAME: anagrafica-nprod-backend/root
 
 phases:
   pre_build:

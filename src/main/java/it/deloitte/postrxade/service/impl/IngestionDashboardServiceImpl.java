@@ -36,6 +36,14 @@ public class IngestionDashboardServiceImpl implements IngestionDashboardService 
     @Autowired
     TransactionRepository transactionRepository;
     @Autowired
+    SoggettiRepository soggettiRepository;
+    @Autowired
+    RapportiRepository rapportiRepository;
+    @Autowired
+    DatiContabiliRepository datiContabiliRepository;
+    @Autowired
+    CollegamentiRepository collegamentiRepository;
+    @Autowired
     ErrorRecordRepository errorRecordRepository;
     @Autowired
     MerchantRepository merchantRepository;
@@ -85,10 +93,14 @@ public class IngestionDashboardServiceImpl implements IngestionDashboardService 
                     }
 
                     // --- Initialize Counters ---
-                    long totalNoTransactions = 0;
-                    long totalNoTransactionErrors = 0;
-                    long totalNoTransactionsOfMerchants = 0;
-                    long totalNoMerchantErrors = 0;
+                    long totalNoSoggetti = 0;
+                    long totalNoSoggettiErrors = 0;
+                    long totalNoRapporti = 0;
+                    long totalNoRapportiErrors = 0;
+                    long totalNoCollegamenti = 0;
+                    long totalNoCollegamentiErrors = 0;
+                    long totalNoDatiContabili = 0;
+                    long totalNoDatiContabiliErrors = 0;
 
                     // --- Initialize Status Logic ---
                     // Default to UNKNOWN
@@ -109,13 +121,23 @@ public class IngestionDashboardServiceImpl implements IngestionDashboardService 
 
                             // A. COUNTING LOGIC (Using IngestionTypeEnum)
                             if (IngestionTypeEnum.SOGGETTI.getLabel().equals(typeName)) {
-                                totalNoTransactions += transactionRepository.countByIngestionId(ingestion.getId());
-                                totalNoTransactionErrors += errorRecordRepository
+                                totalNoSoggetti += soggettiRepository.countByIngestionId(ingestion.getId());
+                                totalNoSoggettiErrors += errorRecordRepository
                                         .countByIngestionIdAndIngestionIngestionTypeName(ingestion.getId(), IngestionTypeEnum.SOGGETTI.getLabel());
-                            } else  {
-                                totalNoTransactionsOfMerchants += merchantRepository.countByIngestionId(ingestion.getId());
-                                totalNoMerchantErrors += errorRecordRepository
+                            } else if (IngestionTypeEnum.RAPPORTI.getLabel().equals(typeName)) {
+                                totalNoRapporti += rapportiRepository.countByIngestionId(ingestion.getId());
+                                totalNoRapportiErrors += errorRecordRepository
                                         .countByIngestionIdAndIngestionIngestionTypeName(ingestion.getId(), IngestionTypeEnum.RAPPORTI.getLabel());
+                            } else if (IngestionTypeEnum.DATI_CONTABILI.getLabel().equals(typeName)) {
+                                totalNoDatiContabili += datiContabiliRepository.countByIngestionId(ingestion.getId());
+                                totalNoDatiContabiliErrors += errorRecordRepository
+                                        .countByIngestionIdAndIngestionIngestionTypeName(ingestion.getId(), IngestionTypeEnum.DATI_CONTABILI.getLabel());
+
+                            } else if (IngestionTypeEnum.COLLEGAMENTI.getLabel().equals(typeName)) {
+                                totalNoCollegamenti += collegamentiRepository.countByIngestionId(ingestion.getId());
+                                totalNoCollegamentiErrors += errorRecordRepository
+                                        .countByIngestionIdAndIngestionIngestionTypeName(ingestion.getId(), IngestionTypeEnum.COLLEGAMENTI.getLabel());
+
                             }
 
                             // B. STATUS LOGIC (Using IngestionStatusEnum)
@@ -145,13 +167,17 @@ public class IngestionDashboardServiceImpl implements IngestionDashboardService 
 
                     // Use Enum Labels for DTO keys to ensure frontend consistency
                     dto.setTransactions(Arrays.asList(
-                            new IngestionTransactionsDTO(IngestionTypeEnum.SOGGETTI.getLabel(), String.valueOf(totalNoTransactions + totalNoTransactionErrors)),
-                            new IngestionTransactionsDTO(IngestionTypeEnum.RAPPORTI.getLabel(), String.valueOf(totalNoTransactionsOfMerchants + totalNoMerchantErrors))
+                            new IngestionTransactionsDTO(IngestionTypeEnum.SOGGETTI.getLabel(), String.valueOf(totalNoSoggetti + totalNoSoggettiErrors)),
+                            new IngestionTransactionsDTO(IngestionTypeEnum.RAPPORTI.getLabel(), String.valueOf(totalNoRapporti + totalNoRapportiErrors)),
+                            new IngestionTransactionsDTO(IngestionTypeEnum.DATI_CONTABILI.getLabel(), String.valueOf(totalNoDatiContabili + totalNoDatiContabiliErrors)),
+                            new IngestionTransactionsDTO(IngestionTypeEnum.COLLEGAMENTI.getLabel(), String.valueOf(totalNoCollegamenti + totalNoCollegamentiErrors))
                     ));
 
                     dto.setBreakdown(Arrays.asList(
-                            new IngestionBreakdownDTO(IngestionTypeEnum.SOGGETTI.getLabel(), String.valueOf(totalNoTransactions), String.valueOf(totalNoTransactionErrors)),
-                            new IngestionBreakdownDTO(IngestionTypeEnum.RAPPORTI.getLabel(), String.valueOf(totalNoTransactionsOfMerchants), String.valueOf(totalNoMerchantErrors))
+                            new IngestionBreakdownDTO(IngestionTypeEnum.SOGGETTI.getLabel(), String.valueOf(totalNoSoggetti), String.valueOf(totalNoSoggettiErrors)),
+                            new IngestionBreakdownDTO(IngestionTypeEnum.RAPPORTI.getLabel(), String.valueOf(totalNoRapporti), String.valueOf(totalNoRapportiErrors)),
+                            new IngestionBreakdownDTO(IngestionTypeEnum.DATI_CONTABILI.getLabel(), String.valueOf(totalNoDatiContabili), String.valueOf(totalNoDatiContabiliErrors)),
+                            new IngestionBreakdownDTO(IngestionTypeEnum.COLLEGAMENTI.getLabel(), String.valueOf(totalNoCollegamenti), String.valueOf(totalNoCollegamentiErrors))
                     ));
 
                     // Set Month

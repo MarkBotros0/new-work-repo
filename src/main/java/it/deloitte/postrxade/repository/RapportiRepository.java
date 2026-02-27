@@ -40,10 +40,8 @@ public interface RapportiRepository extends JpaRepository<Rapporti, Long>, Rappo
             """)
     int deleteBySubmissionId(@Param("submissionId") Long submissionId);
 
-    @Query("""
-              SELECT COUNT(t)
-              FROM Rapporti r
-              WHERE r.submission.id = :submissionId
-            """)
-    long countBySubmissionId(@Param("submissionId") Long submissionId);
+    long countBySubmissionId(Long submissionId);
+
+    @Query("SELECT COUNT(r) FROM Rapporti r WHERE r.submission.id IN :submissionIds")
+    long countBySubmissionIn(@Param("submissionIds") List<Long> submissionIds);
 }

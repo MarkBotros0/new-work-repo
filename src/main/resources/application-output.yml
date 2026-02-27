@@ -1,0 +1,140 @@
+# ===================================================================
+# Spring Boot configuration for the "output" profile.
+#
+# This profile is used for ECS Fargate output generation jobs.
+# NO web server - runs as a command-line job and exits.
+# ===================================================================
+
+# Disable web server - this is a batch job, not a web application
+spring:
+  application:
+    name: pos-trx-ade  # Same as dev profile
+  main:
+    web-application-type: none
+    banner-mode: 'off'
+    allow-bean-definition-overriding: true
+
+  # Disable session management (not needed for output generation)
+  session:
+    store-type: none
+
+  # Minimal scheduling pool (output job doesn't use @Scheduled, but Spring requires size >= 1)
+  task:
+    scheduling:
+      pool:
+        size: ${SPRING_TASK_SCHEDULING_POOL_SIZE:1}  # Minimum required by Spring Boot
+
+  datasource:
+    type: com.zaxxer.hikari.HikariDataSource
+    # Database connection - uses environment variables from ECS Task Definition (MariaDB/RDS)
+    # Longer timeout for output generation (can take 30-60 minutes)
+    url: jdbc:mariadb://${DB_HOST}:${DB_PORT:3306}/${DB_NAME}?useSSL=true&serverTimezone=UTC&allowPublicKeyRetrieval=true&autoReconnect=true&failOverReadOnly=false&maxReconnects=3&connectTimeout=30000&socketTimeout=3600000&trustServerCertificate=true
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driverClassName: org.mariadb.jdbc.Driver
+    hikari:
+      poolName: Hikari-Output
+      auto-commit: false
+      # Moderate pool size for output generation
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 60000   # 60 seconds
+      idle-timeout: 600000        # 10 minutes
+      max-lifetime: 3600000       # 60 minutes - MUST be > socketTimeout
+      leak-detection-threshold: 1800000  # 30 minutes
+      validation-timeout: 10000
+      keepalive-time: 60000       # 60 seconds keepalive
+      connection-test-query: SELECT 1
+      data-source-properties:
+        cachePrepStmts: true
+        prepStmtCacheSize: 250
+        prepStmtCacheSqlLimit: 2048
+        useServerPrepStmts: true
+
+  jpa:
+    open-in-view: false
+    show-sql: false
+    hibernate:
+      ddl-auto: validate
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+        implicit-strategy: org.hibernate.boot.model.naming.ImplicitNamingStrategyLegacyJpaImpl
+    properties:
+      hibernate.dialect: org.hibernate.dialect.MySQL8Dialect
+      hibernate.default_schema: ${DB_NAME:posappdb}
+      hibernate.jdbc.time_zone: UTC
+      hibernate.id.new_generator_mappings: true
+      hibernate.globally_quoted_identifiers: true
+      hibernate.connection.provider_disables_autocommit: true
+      hibernate.cache.use_second_level_cache: false
+      hibernate.cache.use_query_cache: false
+      hibernate.format_sql: false
+      hibernate.generate_statistics: false
+      # Optimized batch sizes for output generation (increased for better performance)
+      hibernate.jdbc.batch_size: 100
+      hibernate.order_inserts: true
+      hibernate.order_updates: true
+      hibernate.jdbc.fetch_size: 5000
+      hibernate.criteria.literal_handling_mode: BIND
+      hibernate.query.fail_on_pagination_over_collection_fetch: true
+      hibernate.query.in_clause_parameter_padding: true
+
+  jmx:
+    enabled: false
+
+# Logging configuration for output generation mode
+logging:
+  level:
+    root: INFO
+    it.deloitte.postrxade: INFO
+    # Detailed logging for output generation process
+    it.deloitte.postrxade.batch.OutputGenerationRunner: INFO
+    it.deloitte.postrxade.service.impl.OutputServiceImpl: INFO
+    it.deloitte.postrxade.service.impl.S3ServiceImpl: INFO
+    # Hibernate SQL logs disabled (too verbose)
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN
+    com.zaxxer.hikari: INFO
+
+# AWS Configuration
+aws:
+  region: ${AWS_REGION:eu-central-1}
+  s3:
+    bucket-name: ${S3_BUCKET_NAME}
+    region: ${S3_BUCKET_REGION}
+    output-folder: ${S3_BUCKET_OUTPUT_FOLDER}
+    input-folder: ${S3_BUCKET_INPUT_FOLDER}
+    input-folder-loaded: ${S3_BUCKET_INPUT_FOLDER_LOADED}
+  ecs:
+    enabled: false  # Not needed in output profile (this IS the ECS task)
+    cluster-name: ${AWS_ECS_CLUSTER_NAME}
+    task-definition-output: ${AWS_ECS_TASK_DEFINITION_OUTPUT}
+    subnet-ids: ${AWS_ECS_SUBNET_IDS:}
+    security-group-ids: ${AWS_ECS_SECURITY_GROUP_IDS:}
+    launch-type: ${AWS_ECS_LAUNCH_TYPE:FARGATE}
+
+# Application configuration
+application:
+  authority:
+    info-env: 'INT'  # Environment identifier
+  ingestion:
+    use-staging: true  # Use staging for consistency
+  rest:
+    tracing-request:
+      enabled: false  # Disable request tracing in output mode
+
+# Output generation configuration
+output:
+  # Number of rows per output file (configurable via OUTPUT_ROWS_PER_FILE environment variable)
+  # Default: 1000000 (calculated to produce ~300MB files based on 30MB for 100k records)
+  # Formula: 300MB / (30MB / 100000) = 1.000.000 records
+  rows-per-file: ${OUTPUT_ROWS_PER_FILE:1000000}
+
+# Tenant config per output: codice fiscale in header/footer (Nexi 04107060966, Amex 14778691007)
+multi-tenant:
+  bootstrap-tenant: ${TENANT_ID:nexi}
+  tenants:
+    nexi:
+      output-codice-fiscale: "04107060966"
+    amex:
+      output-codice-fiscale: "14778691007"

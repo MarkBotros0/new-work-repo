@@ -17,8 +17,10 @@ import it.deloitte.postrxade.dto.*;
 /**
  * Configuration component for Orika Bean Mapping.
  * <p>
- * This class defines how Entities map to DTOs. It provides multiple {@link MapperFactory} configurations
- * to handle different serialization needs (e.g., full object graphs vs. simplified views to avoid circular dependencies).
+ * This class defines how Entities map to DTOs. It provides multiple
+ * {@link MapperFactory} configurations
+ * to handle different serialization needs (e.g., full object graphs vs.
+ * simplified views to avoid circular dependencies).
  */
 @Component
 public class ObjectMapper {
@@ -26,14 +28,18 @@ public class ObjectMapper {
     /**
      * The primary MapperFactory used for standard, full-depth mappings.
      * <p>
-     * This factory includes all fields by default, suitable for detailed views where
+     * This factory includes all fields by default, suitable for detailed views
+     * where
      * the complete object graph is required.
      *
      * @return A configured {@link MapperFactory}.
      */
     @Bean
     public MapperFactory mapperFactory() {
-        MapperFactory mapperFactory = new DefaultMapperFactory.Builder().build();
+        MapperFactory mapperFactory = new DefaultMapperFactory.Builder()
+                // Java 21: avoids Orika CloneableConverter reflective access to Object.clone()
+                .useBuiltinConverters(false)
+                .build();
 
         // User ↔ UserDTO mapping
         mapperFactory.classMap(User.class, UserDTO.class)
@@ -54,7 +60,7 @@ public class ObjectMapper {
                 .mapNulls(false).mapNullsInReverse(false)
                 .field("id", "id")
                 .field("description", "description")
-//                .field("users", "users")
+                // .field("users", "users")
                 .byDefault()
                 .register();
 
@@ -87,9 +93,9 @@ public class ObjectMapper {
                 .field("name", "name")
                 .field("description", "description")
                 .field("order", "order")
-//                .field("submissions", "submissions")
-//                .field("beforeLogs", "beforeLogs")
-//                .field("afterLogs", "afterLogs")
+                // .field("submissions", "submissions")
+                // .field("beforeLogs", "beforeLogs")
+                // .field("afterLogs", "afterLogs")
                 .byDefault()
                 .register();
 
@@ -165,7 +171,7 @@ public class ObjectMapper {
         mapperFactory.classMap(Log.class, LogDTO.class)
                 .mapNulls(false).mapNullsInReverse(false)
                 .field("id", "id")
-                //.field("timestamp", "timestamp")
+                // .field("timestamp", "timestamp")
                 .field("submission", "submission")
                 .field("updater", "updater")
                 .field("beforeSubmissionStatus", "beforeSubmissionStatus")
@@ -258,7 +264,7 @@ public class ObjectMapper {
                 .field("description", "description")
                 .field("severityLevel", "severityLevel")
                 .field("isActive", "isActive")
-//                .field("errorRecords", "errorRecords")
+                // .field("errorRecords", "errorRecords")
                 .byDefault()
                 .register();
 
@@ -281,8 +287,8 @@ public class ObjectMapper {
                 .mapNulls(false).mapNullsInReverse(false)
                 .field("id", "id")
                 .field("ingestion", "ingestion")
-//                .field("errorType", "errorType")
-//                .field("errorMessage", "errorMessage")
+                // .field("errorType", "errorType")
+                // .field("errorMessage", "errorMessage")
                 .field("rawRow", "rawRow")
                 .byDefault()
                 .register();
@@ -293,7 +299,8 @@ public class ObjectMapper {
     /**
      * Creates the primary {@link MapperFacade} bean.
      * <p>
-     * This is the bean commonly injected into services using {@code @Autowired MapperFacade}.
+     * This is the bean commonly injected into services using
+     * {@code @Autowired MapperFacade}.
      *
      * @param mapperFactory The default factory configured above.
      * @return The facade for performing mappings.
@@ -308,7 +315,8 @@ public class ObjectMapper {
      * Creates an "Alternative" MapperFactory.
      * <p>
      * This factory is configured with explicit <strong>exclusions</strong>.
-     * It is used when generating "Custom" DTOs or lists where infinite recursion (circular dependencies)
+     * It is used when generating "Custom" DTOs or lists where infinite recursion
+     * (circular dependencies)
      * must be avoided (e.g., User -> Authority -> User -> Authority).
      *
      * @return A configured {@link MapperFactory} for simplified views.
@@ -316,7 +324,10 @@ public class ObjectMapper {
     @Bean
     @Qualifier("alternativeMapperFactory")
     public MapperFactory alternativeMapperFactory() {
-        MapperFactory alternativeMapperFactory = new DefaultMapperFactory.Builder().build();
+        MapperFactory alternativeMapperFactory = new DefaultMapperFactory.Builder()
+                // Java 21: avoids Orika CloneableConverter reflective access to Object.clone()
+                .useBuiltinConverters(false)
+                .build();
 
         // Alternative mappings with exclusions for circular references
         alternativeMapperFactory.classMap(User.class, UserDTO.class)
@@ -325,7 +336,6 @@ public class ObjectMapper {
                 .mapNullsInReverse(false)
                 .byDefault()
                 .register();
-
 
         alternativeMapperFactory.classMap(Submission.class, SubmissionCustomDTO.class)
                 .exclude("ingestions")
@@ -410,9 +420,12 @@ public class ObjectMapper {
         // TransactionError mapping removed as entity was deleted
 
         alternativeMapperFactory.classMap(Log.class, LogDTO.class)
+                .exclude("submission")
+                .exclude("updater")
+                .exclude("beforeSubmissionStatus")
+                .exclude("afterSubmissionStatus")
                 .mapNulls(false)
                 .mapNullsInReverse(false)
-                .byDefault()
                 .register();
 
         alternativeMapperFactory.classMap(Transaction.class, TransactionDTO.class)
@@ -435,14 +448,18 @@ public class ObjectMapper {
     /**
      * Creates a specialized mapper for User Services.
      * <p>
-     * Excludes 'checklists' from UserDTO to provide a user view focused on identity permissions.
+     * Excludes 'checklists' from UserDTO to provide a user view focused on identity
+     * permissions.
      *
      * @return A configured {@link MapperFactory}.
      */
     @Bean
     @Qualifier("userServiceMapperFactory")
     public MapperFactory userServiceMapperFactory() {
-        MapperFactory mapperFactory = new DefaultMapperFactory.Builder().build();
+        MapperFactory mapperFactory = new DefaultMapperFactory.Builder()
+                // Java 21: avoids Orika CloneableConverter reflective access to Object.clone()
+                .useBuiltinConverters(false)
+                .build();
 
         mapperFactory.classMap(User.class, UserDTO.class)
                 .exclude("checklists")
@@ -463,7 +480,8 @@ public class ObjectMapper {
     /**
      * Creates the Facade for the Alternative Mapper.
      * <p>
-     * Inject this using {@code @Autowired @Qualifier("alternativeMapperFacade") MapperFacade}.
+     * Inject this using
+     * {@code @Autowired @Qualifier("alternativeMapperFacade") MapperFacade}.
      *
      * @param alternativeMapperFactory The factory created above.
      * @return The facade for performing simplified mappings.
@@ -474,5 +492,3 @@ public class ObjectMapper {
         return alternativeMapperFactory.getMapperFacade();
     }
 }
-
-

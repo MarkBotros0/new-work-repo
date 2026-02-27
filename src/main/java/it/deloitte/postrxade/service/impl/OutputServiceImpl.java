@@ -4,6 +4,7 @@ import it.deloitte.postrxade.entity.*;
 import it.deloitte.postrxade.exception.NotFoundRecordException;
 import it.deloitte.postrxade.formatter.OutputFileFormatter;
 import it.deloitte.postrxade.repository.*;
+import it.deloitte.postrxade.service.EcsTaskService;
 import it.deloitte.postrxade.service.OutputService;
 import it.deloitte.postrxade.service.S3Service;
 import lombok.extern.slf4j.Slf4j;
@@ -64,6 +65,12 @@ public class OutputServiceImpl implements OutputService {
 
     @Autowired
     private S3Service s3Service;
+
+    @Autowired(required = false)
+    private EcsTaskService ecsTaskService;
+
+    @Value("${aws.ecs.enabled:false}")
+    private boolean ecsEnabled;
 
     @Value("${aws.s3.output-folder}")
     private String outputFolder;
@@ -229,7 +236,7 @@ public class OutputServiceImpl implements OutputService {
 
             for (Output output : outputs) {
                 log.info("Processing output file {} for submission {}", output.getId(), submissionId);
-                
+
                 // Fetch Collegamenti with ALL children using optimized JOIN query
                 List<Collegamenti> collegamentiList = collegamentiRepository.findCollegamentiWithChildrenByOutputId(
                         submissionId, output.getId(), rowsPerOutputFile);
@@ -260,26 +267,26 @@ public class OutputServiceImpl implements OutputService {
                 // 3. Section 2: Collegamenti with Rapporti and Soggetti children (Type 2 records)
                 for (Collegamenti c : collegamentiList) {
                     if (c.getRapporto() != null && c.getSoggetto() != null) {
-                        String line = OutputFileFormatter.toCollegamentiOutputString(c);
+                        String line = OutputFileFormatter.toCollegamentiOutputString(c, section2Count);
                         zos.write(line.getBytes(StandardCharsets.UTF_8));
                         section2Count++;
                     }
                 }
 
                 // 4. Section 3: Collegamenti with DatiContabili children (Type 3 records)
-                for (Collegamenti c : collegamentiList) {
-                    if (c.getDatiContabili() != null) {
-                        String line = OutputFileFormatter.toCollegamentiOutputString2(c);
-                        zos.write(line.getBytes(StandardCharsets.UTF_8));
-                        section3Count++;
-                    }
-                }
+//                for (Collegamenti c : collegamentiList) {
+//                    if (c.getDatiContabili() != null) {
+//                        String line = OutputFileFormatter.toCollegamentiOutputString2(c);
+//                        zos.write(line.getBytes(StandardCharsets.UTF_8));
+//                        section3Count++;
+//                    }
+//                }
 
                 // 5. Footer with counts for the 3 sections
                 String footer = OutputFileFormatter.createFooter(section1Count, section2Count, section3Count);
                 zos.write(footer.getBytes(StandardCharsets.UTF_8));
 
-                log.info("Output file {} completed: Section1={}, Section2={}, Section3={}", 
+                log.info("Output file {} completed: Section1={}, Section2={}, Section3={}",
                         output.getId(), section1Count, section2Count, section3Count);
 
                 zos.closeEntry();
@@ -495,10 +502,25 @@ public class OutputServiceImpl implements OutputService {
     @Async
     @Transactional(rollbackFor = Exception.class)
     public void generateSubmissionOutputTxtAsync(Long submissionId) {
+        if (ecsEnabled && ecsTaskService != null) {
+            try {
+                log.info("Launching ECS task for output generation - submissionId: {}", submissionId);
+                String taskArn = ecsTaskService.launchOutputGenerationTask(submissionId);
+                log.info("ECS task launched successfully - taskArn: {}, submissionId: {}", taskArn, submissionId);
+                return;
+            } catch (Exception e) {
+                log.error("Failed to launch ECS task for output generation - submissionId: {}, error: {}",
+                        submissionId, e.getMessage(), e);
+                log.warn("Falling back to synchronous generation to preserve local/manual workflow");
+            }
+        } else {
+            log.info("ECS output disabled or unavailable, using local synchronous generation for submissionId={}", submissionId);
+        }
+
         try {
-            log.debug("Starting async output generation for submissionId={}", submissionId);
+            log.debug("Starting local async output generation for submissionId={}", submissionId);
             generateSubmissionOutputTxt(submissionId);
-            log.debug("Async output generation completed for submissionId={}", submissionId);
+            log.debug("Local async output generation completed for submissionId={}", submissionId);
         } catch (NotFoundRecordException | IOException e) {
             log.error("Error generating output asynchronously for submissionId={}: {}", submissionId, e.getMessage(), e);
         }

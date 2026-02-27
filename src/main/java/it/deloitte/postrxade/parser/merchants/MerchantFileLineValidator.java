@@ -26,11 +26,58 @@ public class MerchantFileLineValidator {
     private static final String NULL_VALUE_ERROR_MSG = "%s cannot be null or empty";
     private static final String LENGTH_MISMATCH_ERROR_MSG = "%s expected length %d but got %d";
     private static final String INVALID_VALUE_ERROR_MSG = "%s '%s' does not match expected value [ %s ]";
+    private static final String MANDATORY_DATA_IS_MISSING_ERROR_MSG = "%s '%s' does not match expected length (%d)";
+    private static final String INVALID_DATE_ERROR_MSG = "%s '%s' does not match expected date format [ %s ]";
 
     // Error Codes
     private static final String INVALID_FORMAT_ERROR_CODE = ErrorTypeCode.INVALID_FORMAT.getErrorCode();
     private static final String MANDATORY_DATA_IS_MISSING_ERROR_CODE = ErrorTypeCode.MANDATORY_DATA_IS_MISSING.getErrorCode();
     private static final String INVALID_VALUE_ERROR_CODE = ErrorTypeCode.INVALID_VALUE.getErrorCode();
+    private static final String INVALID_DATE_ERROR_CODE = ErrorTypeCode.INVALID_DATE_FORMAT.getErrorCode();
+    private static final Set<String> VALID_CAB_STRING_CODES = new HashSet<>();
+    private static final Set<String> VALID_CAB_NUMBER_CODES = new HashSet<>();
+
+    static {
+        VALID_CAB_STRING_CODES.addAll(Arrays.asList(
+                "AFG", "ALB", "DZA", "AND", "AGO", "ΑΙΑ", "ATA", "ATG", "ANT", "SAU", "ARG", "ARM", "ABW", "AUS", "AUT", "AZE",
+                "BHS", "BHR", "BGD", "BRB", "BEL", "BLZ", "BEN", "BMU", "BLR", "BTN", "BOL", "BIH", "BWA", "BRA", "BRN", "BGR",
+                "BFA", "BDI", "KHM", "CMR", "CAN", "CPV", "TCD", "CHL", "CHN", "CYP", "VAT", "COL", "COM", "PRK", "KOR", "CRI",
+                "CIV", "HRV", "CUB", "DNK", "DMA", "ECU", "EGY", "IRL", "SLV", "ARE", "ERI", "EST", "ETH", "RUS", "FJI", "PHL",
+                "FIN", "FRA", "GAB", "GMB", "GEO", "DEU", "GHA", "JAM", "JPN", "GIB", "DJI", "JOR", "GRC", "GRD", "GRL", "GLP",
+                "GUM", "GTM", "GIN", "GNB", "GNQ", "GUY", "GUF", "HTI", "HND", "HKG", "IND", "IDN", "IRN", "IRQ", "BVT", "CXR",
+                "HMD", "CYM", "CCK", "COK", "FLK", "FRO", "MHL", "MNP", "UMI", "NFK", "SLB", "TCA", "VIR", "VGB", "ISR", "ISL",
+                "ITA", "KAZ", "KEN", "KGZ", "KIR", "KWT", "LAO", "LVA", "LSO", "LBN", "LBR", "LBY", "LIE", "LTU", "LUX", "MAC",
+                "MKD", "MDG", "MWI", "MDV", "MYS", "MLI", "MLT", "MAR", "MTQ", "MRT", "MUS", "MYT", "MEX", "MDA", "MCO", "MNG",
+                "MSR", "MOZ", "MMR", "NAM", "NRU", "NPL", "NIC", "NER", "NGA", "NIU", "NOR", "NCL", "NZL", "OMN", "NLD", "PAK",
+                "PLW", "PAN", "PNG", "PRY", "PER", "PCN", "PYF", "POL", "PRT", "PRI", "QAT", "GBR", "CZE", "CAF", "COG", "COD",
+                "DOM", "REU", "ROU", "RWA", "ESH", "KNA", "SPM", "VCT", "WSM", "ASM", "SMR", "SHN", "LCA", "STP", "SEN", "SCG",
+                "SYC", "SLE", "SGP", "SYR", "SVK", "SVN", "SOM", "ESP", "LKA", "FSM", "USA", "ZAF", "SGS", "SDN", "SUR", "SJM",
+                "SWE", "CHE", "SWZ", "TIK", "THA", "TWN", "TZA", "IOT", "ATF", "PSE", "TLS", "TGO", "TKL", "TON", "TTO", "TUN",
+                "TUR", "TKM", "TUV", "UKR", "UGA", "HUN", "URY", "UZB", "VUT", "VEN", "VNM", "WLF", "YEM", "ZMB", "ZWE"
+        ));
+
+        VALID_CAB_NUMBER_CODES.addAll(Arrays.asList(
+                "004","008","012","020","024","660","010","028","530","682","032","051","533","036","040","031",
+                "044","048","050","052","056","084","204","060","112","064","068","070","072","076","096","100",
+                "854","108","116","120","124","132","148","152","156","196","336","170","174","408","410","188",
+                "384","191","192","208","212","218","818","372","222","784","232","233","231","643","242","608",
+                "246","250","266","270","268","276","288","388","392","292","262","400","300","308","304","312",
+                "316","320","324","624","226","328","254","332","340","344","356","360","364","368","074","162",
+                "334","136","166","184","238","234","584","580","581","574","090","796","850","092","376","352",
+                "380","398","404","417","296","414","418","428","426","422","430","434","438","440","442","446",
+                "807","450","454","462","458","466","470","504","474","478","480","175","484","498","492","496",
+                "500","508","104","516","520","524","558","562","566","570","578","540","554","512","528","586",
+                "585","591","598","600","604","612","258","616","620","630","634","826","203","140","178","180",
+                "214","638","642","646","732","659","666","670","882","016","674","654","662","678","686","891",
+                "690","694","702","760","703","705","706","724","144","583","840","710","239","736","740","744",
+                "752","756","748","762","764","158","834","092","260","275","626","768","772","776","780","788",
+                "792","795","798","804","800","348","858","860","548","862","704","876","887","894","716"
+        ));
+    }
+
+    // Date Formats
+    DateTimeFormatter inFmt = DateTimeFormatter.ofPattern("yyyyMMdd");
+    DateTimeFormatter outFmt = DateTimeFormatter.ofPattern("ddMMyyyy");
 
     public List<ErrorRecordCause> validateRapporto(RapportiRecord record) {
         List<ErrorRecordCause> errors = new ArrayList<>();
@@ -40,11 +87,17 @@ public class MerchantFileLineValidator {
         errors.addAll(validateTipoRapportoInterno(record.getTipoRapportoInterno()));
         errors.addAll(validateFormaTecnica(record.getFormaTecnica()));
         errors.addAll(validateFiliale(record.getFiliale()));
-        errors.addAll(validateCab(record.getCab()));
+        errors.addAll(validateCab(record.getCab(), record.getTipoRapportoInterno()));
         errors.addAll(validateNumeroConto(record.getNumeroConto()));
         errors.addAll(validateCin(record.getCin()));
         errors.addAll(validateDivisa(record.getDivisa()));
-        errors.addAll(validateDataInizioRapporto(record.getDataInizioRapporto()));
+
+        List<ErrorRecordCause> dateErrors = validateDataInizioRapporto(record.getDataInizioRapporto());
+        errors.addAll(dateErrors);
+        if (dateErrors.isEmpty())
+            record.setDataInizioRapporto(LocalDate.parse(record.getDataInizioRapporto(), inFmt).format(outFmt));
+
+
         errors.addAll(validateDataFineRapporto(record.getDataFineRapporto()));
         errors.addAll(validateNote(record.getNote()));
         errors.addAll(validateFlagStatoRapporto(record.getFlagStatoRapporto()));
@@ -53,7 +106,6 @@ public class MerchantFileLineValidator {
 
         return errors;
     }
-
 
     private List<ErrorRecordCause> validateIntermediario(String intermediario) {
         List<ErrorRecordCause> errors = new ArrayList<>();
@@ -320,7 +372,8 @@ public class MerchantFileLineValidator {
     }
 
     private List<ErrorRecordCause> validateDataFineRapporto(String dataFine) {
-        return validateDateField(dataFine, "Data fine rapporto");
+//        return validateDateField(dataFine, "Data fine rapporto");
+        return Collections.emptyList();
     }
 
     private List<ErrorRecordCause> validateNote(String note) {
@@ -366,55 +419,76 @@ public class MerchantFileLineValidator {
     private List<ErrorRecordCause> validateDateField(String dateValue, String fieldName) {
         List<ErrorRecordCause> errors = new ArrayList<>();
         int expectedLength = 8;
+        Pattern exepectedPattern = NUMERIC_REGEX;
 
-        if (dateValue == null || dateValue.isEmpty()) {
-            errors.add(new ErrorRecordCause(
-                    String.format(NULL_VALUE_ERROR_MSG, fieldName),
-                    MANDATORY_DATA_IS_MISSING_ERROR_CODE));
+        if (!exepectedPattern.matcher(dateValue).matches()) {
+            String errorDescription = String.format(INVALID_FORMAT_ERROR_MSG, fieldName, dateValue, exepectedPattern.pattern());
+            errors.add(new ErrorRecordCause(errorDescription, INVALID_FORMAT_ERROR_CODE));
+        }
+        if (dateValue.length() != expectedLength) {
+            String errorDescription = String.format(MANDATORY_DATA_IS_MISSING_ERROR_MSG, fieldName, dateValue, expectedLength);
+            errors.add(new ErrorRecordCause(errorDescription, MANDATORY_DATA_IS_MISSING_ERROR_CODE));
+        }
+        DateTimeFormatter inFmt = DateTimeFormatter.ofPattern("yyyyMMdd");
+        try {
+            LocalDate date = LocalDate.parse(dateValue, inFmt);
+        } catch (DateTimeParseException e) {
+            // Se il parsing fallisce, è un errore di formato data (WRN2)
+            String errorDescription = String.format(INVALID_DATE_ERROR_MSG, fieldName, dateValue, inFmt);
+            errors.add(new ErrorRecordCause(errorDescription, INVALID_DATE_ERROR_CODE));
+        }
+        return errors;
+
+    }
+
+    private List<ErrorRecordCause> validateCab(String cab, String tipoRapporto) {
+        List<ErrorRecordCause> errors = new ArrayList<>();
+        String fieldName = "CAB";
+        Integer tipoRapportoParsed = Integer.parseInt(tipoRapporto);
+
+        Set<Integer> validTipoRapporto = new HashSet<>();
+        validTipoRapporto.add(1);
+        validTipoRapporto.add(2);
+        validTipoRapporto.add(3);
+        validTipoRapporto.add(12);
+        validTipoRapporto.add(13);
+        validTipoRapporto.add(96);
+        validTipoRapporto.add(97);
+
+        // CAB must be non-empty for specific rapport types
+        if (cab == null || cab.isEmpty()) {
+            if (validTipoRapporto.contains(tipoRapportoParsed)) {
+                errors.add(new ErrorRecordCause(
+                        String.format(MANDATORY_DATA_IS_MISSING_ERROR_MSG, fieldName, cab, 3),
+                        MANDATORY_DATA_IS_MISSING_ERROR_CODE));
+            }
             return errors;
         }
 
-        if (dateValue.length() != expectedLength) {
-            errors.add(new ErrorRecordCause(
-                    String.format(LENGTH_MISMATCH_ERROR_MSG, fieldName, expectedLength, dateValue.length()),
-                    MANDATORY_DATA_IS_MISSING_ERROR_CODE));
+        // If CAB is populated, validate it against ISO code tables
+        // Check if it's made of letters (ISO country codes)
+        if (cab.matches("^[A-Z]+$")) {
+            if (!VALID_CAB_STRING_CODES.contains(cab)) {
+                errors.add(new ErrorRecordCause(
+                        String.format(INVALID_VALUE_ERROR_MSG, fieldName, cab, "[ITA, AFG, ALB, ...]"),
+                        INVALID_VALUE_ERROR_CODE));
+            }
         }
-
-        if (!NUMERIC_REGEX.matcher(dateValue).matches()) {
+        // Check if it's made of numbers (ISO numeric codes)
+        else if (cab.matches("^[0-9]+$")) {
+            if (!VALID_CAB_NUMBER_CODES.contains(cab)) {
+                errors.add(new ErrorRecordCause(
+                        String.format(INVALID_VALUE_ERROR_MSG, fieldName, cab, "[004, 008, 012, ...]"),
+                        INVALID_VALUE_ERROR_CODE));
+            }
+        }
+        // If it's neither all letters nor all numbers, it's invalid
+        else {
             errors.add(new ErrorRecordCause(
-                    String.format(INVALID_FORMAT_ERROR_MSG, fieldName, dateValue, "yyyyMMdd"),
+                    String.format(INVALID_FORMAT_ERROR_MSG, fieldName, cab, "ISO country code (letters or numbers)"),
                     INVALID_FORMAT_ERROR_CODE));
         }
-        return errors;
-    }
 
-    private List<ErrorRecordCause> validateCab(String cab) {
-        List<ErrorRecordCause> errors = new ArrayList<>();
-        String fieldName = "CAB";
-        int expectedLength = 5;
-
-//        if (cab == null || cab.isEmpty()) {
-//            errors.add(new ErrorRecordCause(
-//                    String.format(NULL_VALUE_ERROR_MSG, fieldName),
-//                    MANDATORY_DATA_IS_MISSING_ERROR_CODE));
-//            return errors;
-//        }
-        if (cab.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-
-        if (cab.length() > expectedLength) {
-            errors.add(new ErrorRecordCause(
-                    String.format(LENGTH_MISMATCH_ERROR_MSG, fieldName, expectedLength, cab.length()),
-                    MANDATORY_DATA_IS_MISSING_ERROR_CODE));
-        }
-
-        if (!ALPHANUMERIC_REGEX.matcher(cab).matches()) {
-            errors.add(new ErrorRecordCause(
-                    String.format(INVALID_FORMAT_ERROR_MSG, fieldName, cab, "alphaNumeric"),
-                    INVALID_FORMAT_ERROR_CODE));
-        }
         return errors;
     }
 
@@ -456,7 +530,12 @@ public class MerchantFileLineValidator {
         errors.addAll(validateCodiceFiscale(record.getCodiceFiscale()));
         errors.addAll(validateCognome(record.getCognome()));
         errors.addAll(validateNome(record.getNome()));
-        errors.addAll(validateDataNascita(record.getDataNascita()));
+
+        List<ErrorRecordCause> dateErrors = validateDataNascita(record.getDataNascita());
+        errors.addAll(dateErrors);
+        if (dateErrors.isEmpty())
+            record.setDataNascita(LocalDate.parse(record.getDataNascita(), inFmt).format(outFmt));
+
         errors.addAll(validateComune(record.getComune()));
         errors.addAll(validateProvincia(record.getProvincia()));
         errors.addAll(validateNazione(record.getNazione()));
@@ -471,7 +550,8 @@ public class MerchantFileLineValidator {
     }
 
     private List<ErrorRecordCause> validateDataEstinzioneAnagrafica(String dataEstinzione) {
-        return validateDateField(dataEstinzione, "Data estinzione anagrafica");
+//        return validateDateField(dataEstinzione, "Data estinzione anagrafica");
+        return Collections.emptyList();
     }
 
     private List<ErrorRecordCause> validateFilialeCensimentoAnagrafico(String filiale) {
@@ -586,15 +666,7 @@ public class MerchantFileLineValidator {
     }
 
     private List<ErrorRecordCause> validateDataNascita(String dataNascita) {
-        List<ErrorRecordCause> errors = new ArrayList<>();
-        String fieldName = "Data Nascita";
-
-        if (dataNascita == null || dataNascita.isEmpty() || dataNascita.trim().isEmpty()) {
-            // Optional field
-            return errors;
-        }
-
-        return validateDateField(dataNascita, fieldName);
+        return validateDateField(dataNascita, "Data Nascita");
     }
 
     private List<ErrorRecordCause> validateComune(String comune) {
@@ -697,7 +769,8 @@ public class MerchantFileLineValidator {
     }
 
     private List<ErrorRecordCause> validateDataFineCollegamento(String dataFine) {
-        return validateDateField(dataFine, "Data fine collegamento");
+//        return validateDateField(dataFine, "Data fine collegamento");
+        return Collections.emptyList();
     }
 
     private List<ErrorRecordCause> validateRuoloInterno(String ruoloInterno) {

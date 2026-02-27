@@ -111,6 +111,45 @@ public class ErrorCauseRepositoryImpl implements ErrorCauseRepositoryCustom {
     }
 
     @Override
+    @Transactional(readOnly = true, timeout = 180) // 3 minutes for read-only aggregation queries
+    public long countDistinctErrorRecordsBySubmissionIdAndSeverityAndIngestionType(
+            Long submissionId, Integer severity, String ingestionTypeName) {
+        long startTime = System.currentTimeMillis();
+        log.debug("Starting countDistinctErrorRecordsBySubmissionIdAndSeverityAndIngestionType for submissionId={}, severity={}", submissionId, severity);
+
+        // OPTIMIZED: Use subquery to filter ERROR_TYPE first, then join with ERROR_RECORD
+        // This reduces the dataset before the DISTINCT operation
+        String nativeSql = """
+            SELECT COUNT(DISTINCT er.pk_error_record)
+            FROM ERROR_RECORD er
+            INNER JOIN ERROR_CAUSE ec ON ec.fk_error_record = er.pk_error_record
+            INNER JOIN INGESTION i ON er.fk_ingestion = i.pk_ingestion
+            INNER JOIN INGESTION_TYPE it ON i.fk_ingestion_type = it.pk_ingestion_type
+            INNER JOIN (
+                SELECT pk_error_type 
+                FROM ERROR_TYPE 
+                WHERE serverity_level = :severity
+            ) et ON ec.fk_error_type = et.pk_error_type
+            WHERE er.fk_submission = :submissionId
+            AND it.name = :ingestionTypeName
+            """;
+
+        Query query = entityManager.createNativeQuery(nativeSql);
+        query.setParameter("submissionId", submissionId);
+        query.setParameter("severity", severity);
+        query.setParameter("ingestionTypeName", ingestionTypeName);
+
+        Object result = query.getSingleResult();
+        long count = result instanceof Number ? ((Number) result).longValue() : 0L;
+
+        long duration = System.currentTimeMillis() - startTime;
+        log.info("countDistinctErrorRecordsBySubmissionIdAndSeverityNative completed in {}ms: submissionId={}, severity={}, count={}",
+                duration, submissionId, severity, count);
+
+        return count;
+    }
+
+    @Override
     @Transactional(readOnly = true, timeout = 180)
     public List<ErrorTypeCountDTO> findErrorTypeCountsBySubmissionIdAndSeverityNative(Long submissionId, Integer severity) {
         String nativeSql = """
@@ -145,6 +184,52 @@ public class ErrorCauseRepositoryImpl implements ErrorCauseRepositoryCustom {
             String errorCode = (String) row[2];
             Long count = ((Number) row[3]).longValue();
             
+            dtos.add(new ErrorTypeCountDTO(errorTypeId, errorTypeName, errorCode, count));
+        }
+
+        return dtos;
+    }
+
+    @Override
+    @Transactional(readOnly = true, timeout = 180)
+    public List<ErrorTypeCountDTO> findErrorTypeCountsBySubmissionIdAndSeverityAndIngestionType(
+            Long submissionId,
+            Integer severity,
+            String ingestionTypeName // New parameter
+    ) {
+        String nativeSql = """
+        SELECT 
+            et.pk_error_type AS errorTypeId,
+            et.name AS errorTypeName,
+            et.error_code AS errorCode,
+            COUNT(DISTINCT er.pk_error_record) AS count
+        FROM ERROR_RECORD er
+        INNER JOIN ERROR_CAUSE ec ON ec.fk_error_record = er.pk_error_record
+        INNER JOIN ERROR_TYPE et ON ec.fk_error_type = et.pk_error_type
+        INNER JOIN INGESTION i ON er.fk_ingestion = i.pk_ingestion
+        INNER JOIN INGESTION_TYPE it ON i.fk_ingestion_type = it.pk_ingestion_type
+        WHERE er.fk_submission = :submissionId
+          AND et.serverity_level = :severity
+          AND it.name = :ingestionTypeName
+        GROUP BY et.pk_error_type, et.name, et.error_code
+        ORDER BY count DESC
+        """;
+
+        Query query = entityManager.createNativeQuery(nativeSql);
+        query.setParameter("submissionId", submissionId);
+        query.setParameter("severity", severity);
+        query.setParameter("ingestionTypeName", ingestionTypeName); // Set the new parameter
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> results = query.getResultList();
+
+        List<ErrorTypeCountDTO> dtos = new ArrayList<>(results.size());
+        for (Object[] row : results) {
+            Long errorTypeId = ((Number) row[0]).longValue();
+            String errorTypeName = (String) row[1];
+            String errorCode = (String) row[2];
+            Long count = ((Number) row[3]).longValue();
+
             dtos.add(new ErrorTypeCountDTO(errorTypeId, errorTypeName, errorCode, count));
         }
 

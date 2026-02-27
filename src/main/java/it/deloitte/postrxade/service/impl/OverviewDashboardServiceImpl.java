@@ -83,7 +83,7 @@ public class OverviewDashboardServiceImpl implements OverviewDashboardService {
         aggregateCurrentPeriodStats(submissions, stats);
 
         // 4. Single-Pass Aggregation for Previous Period
-//        aggregatePastPeriodStats(preSubmissions, stats);
+        aggregatePastPeriodStats(preSubmissions, stats);
         return stats;
     }
 
@@ -100,16 +100,12 @@ public class OverviewDashboardServiceImpl implements OverviewDashboardService {
         int ingProcessing = 0;
         int ingSuccess = 0;
 
-        long soggettiReceived = 0;
         long soggettiAccepted = 0;
         long soggettiErrors = 0;
-        long rapportiReceived = 0;
         long rapportiAccepted = 0;
         long rapportiErrors = 0;
-        long collegamentiReceived = 0;
         long collegamentiAccepted = 0;
         long collegamentiErrors = 0;
-        long datiContabiliReceived = 0;
         long datiContabiliAccepted = 0;
         long datiContabiliErrors = 0;
 
@@ -193,29 +189,53 @@ public class OverviewDashboardServiceImpl implements OverviewDashboardService {
         stats.setSuccess(ingSuccess);
 
         stats.setSoggettiAccepted(soggettiAccepted);
-        stats.setSoggettiReceived(soggettiReceived + soggettiErrors);
-        stats.setSoggettiAccepted(soggettiAccepted);
-        stats.setSoggettiReceived(soggettiReceived + soggettiErrors);
-        stats.setSoggettiAccepted(soggettiAccepted);
-        stats.setSoggettiReceived(soggettiReceived + soggettiErrors);
-        stats.setSoggettiAccepted(soggettiAccepted);
-        stats.setSoggettiReceived(soggettiReceived + soggettiErrors);
+        stats.setSoggettiReceived(soggettiAccepted + soggettiErrors);
+        stats.setRapportiAccepted(rapportiAccepted);
+        stats.setRapportiReceived(rapportiAccepted + rapportiErrors);
+        stats.setDatiContabiliAccepted(datiContabiliAccepted);
+        stats.setDatiContabiliReceived(datiContabiliAccepted + datiContabiliErrors);
+        stats.setCollegamentiAccepted(collegamentiAccepted);
+        stats.setCollegamentiReceived(collegamentiAccepted + collegamentiErrors);
 
         stats.setError(totalErrors);
         stats.setWarning(totalWarnings);
+
+
+        stats.setObligationTotal(submissions.size());
+        stats.setObligationRejectedAbandoned(registeredAbandoned);
+        stats.setObligationApproved(approved);
+        stats.setObligationCompleted(completed);
     }
 
     /**
      * Optimized method for Past Period (only needs Transaction stats).
      */
-//    private void aggregatePastPeriodStats(List<Submission> submissions, DashboardStatsDTO stats) {
-//        List<Long> submissionIds = submissions.stream().map(Submission::getId).toList();
-//        long totalTrans = transactionRepository.countTransactionsBySubmissionIds(submissionIds);
-//        long totalErrors = errorRecordRepository.countErrorRecordsBySubmissionIds(submissionIds);
-//
-//        stats.setTotalPreviousReportableTransactions(totalTrans);
-//        stats.setTotalPreviousTransactions(totalTrans + totalErrors);
-//    }
+    private void aggregatePastPeriodStats(List<Submission> submissions, DashboardStatsDTO stats) {
+        List<Long> submissionIds = submissions.stream().map(Submission::getId).toList();
+        long totalSoggetti = soggettiRepository.countBySubmissionIn(submissionIds);
+        long totalSoggettiErrors = errorRecordRepository.countErrorRecordsBySubmissionIdsAndIngestionType(submissionIds, IngestionTypeEnum.SOGGETTI.getLabel());
+
+        long totalRapporti = rapportiRepository.countBySubmissionIn(submissionIds);
+        long totalRapportiErrors = errorRecordRepository.countErrorRecordsBySubmissionIdsAndIngestionType(submissionIds, IngestionTypeEnum.RAPPORTI.getLabel());
+
+        long totalDatiContabili = datiContabiliRepository.countBySubmissionIn(submissionIds);
+        long totalDatiContabiliErrors = errorRecordRepository.countErrorRecordsBySubmissionIdsAndIngestionType(submissionIds, IngestionTypeEnum.DATI_CONTABILI.getLabel());
+
+        long totalCollegamenti = collegamentiRepository.countBySubmissionIn(submissionIds);
+        long totalCollegamentiErrors = errorRecordRepository.countErrorRecordsBySubmissionIdsAndIngestionType(submissionIds, IngestionTypeEnum.COLLEGAMENTI.getLabel());
+
+        stats.setPreviousSoggettiAccepted(totalSoggetti);
+        stats.setPreviousSoggettiReceived(totalSoggetti + totalSoggettiErrors);
+
+        stats.setPreviousRapportiAccepted(totalRapporti);
+        stats.setPreviousRapportiReceived(totalRapporti + totalRapportiErrors);
+
+        stats.setPreviousDatiContabiliAccepted(totalDatiContabili);
+        stats.setPreviousDatiContabiliReceived(totalDatiContabili + totalDatiContabiliErrors);
+
+        stats.setPreviousCollegamentiAccepted(totalCollegamenti);
+        stats.setPreviousCollegamentiReceived(totalCollegamenti + totalCollegamentiErrors);
+    }
 
 
 }

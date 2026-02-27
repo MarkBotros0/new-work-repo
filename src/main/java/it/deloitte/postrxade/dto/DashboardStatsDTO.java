@@ -46,6 +46,30 @@ public class DashboardStatsDTO {
     @JsonProperty("datiContabiliAccepted")
     private Long datiContabiliAccepted;
 
+    @JsonProperty("previousSoggettiReceived")
+    private Long previousSoggettiReceived;
+
+    @JsonProperty("previousSoggettiAccepted")
+    private Long previousSoggettiAccepted;
+
+    @JsonProperty("previousRapportiReceived")
+    private Long previousRapportiReceived;
+
+    @JsonProperty("previousRapportiAccepted")
+    private Long previousRapportiAccepted;
+
+    @JsonProperty("previousCollegamentiReceived")
+    private Long previousCollegamentiReceived;
+
+    @JsonProperty("previousCollegamentiAccepted")
+    private Long previousCollegamentiAccepted;
+
+    @JsonProperty("previousDatiContabiliReceived")
+    private Long previousDatiContabiliReceived;
+
+    @JsonProperty("previousDatiContabiliAccepted")
+    private Long previousDatiContabiliAccepted;
+
     @JsonProperty("error")
     private Long error;
 

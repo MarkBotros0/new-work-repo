@@ -16,5 +16,5 @@ public interface LogRepository extends JpaRepository<Log,Integer> {
             select log from Log log
             """
     )
-    Page<Log> getAllLogsUsingPagination( Pageable pageable);
+    Page<Log> getAllLogsUsingPagination(Pageable pageable);
 }

@@ -1,7 +1,6 @@
 package it.deloitte.postrxade.repository;
 
 import java.util.List;
-import java.util.Map;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -73,10 +72,8 @@ public interface CollegamentiRepository extends JpaRepository<Collegamenti, Long
             """)
     List<RapportoRowDTO> buildOutputRowsBySubmission(Long submissionId);
 
-    @Query("""
-              SELECT COUNT(t)
-              FROM Collegamenti c
-              WHERE c.submission.id = :submissionId
-            """)
-    long countBySubmissionId(@Param("submissionId") Long submissionId);
+    long countBySubmissionId(Long submissionId);
+
+    @Query("SELECT COUNT(c) FROM Collegamenti c WHERE c.submission.id IN :submissionIds")
+    long countBySubmissionIn(@Param("submissionIds") List<Long> submissionIds);
 }

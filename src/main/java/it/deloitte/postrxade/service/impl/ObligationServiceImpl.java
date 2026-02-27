@@ -249,7 +249,7 @@ public class ObligationServiceImpl implements ObligationService {
      */
     @Override
     @Transactional(readOnly = true)
-    public Optional<Submission> getActiveSubmissionForStats(Integer fy, String period) throws NotFoundRecordException {
+    public Optional<Submission>  getActiveSubmissionForStats(Integer fy, String period) throws NotFoundRecordException {
 
         // 1. Check Period & Obligation (Return Empty if missing)
         Optional<Period> optionalPeriod = periodRepository.findByName(period);

@@ -219,6 +219,7 @@ application:
         tracing-request:
             enabled: true
     security:
+        local-sso-workaround-enabled: false
         xsfr:
             enabled: true
             cookie-path: /

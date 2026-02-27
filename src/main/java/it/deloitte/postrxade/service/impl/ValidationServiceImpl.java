@@ -331,82 +331,63 @@ public class ValidationServiceImpl implements ValidationService {
         long methodStartTime = System.currentTimeMillis();
         Submission submission = obligationService.checkIfValid(obligation);
         Long submissionId = submission.getId();
-        
+
         log.info("Starting buildValidationFromSubmissions for submissionId={}", submissionId);
 
-        // Use optimized native SQL COUNT queries instead of loading all entities
-        long queryStart = System.currentTimeMillis();
-        long totalErrors = errorCauseRepository.countDistinctErrorRecordsBySubmissionIdAndSeverityNative(
-                        submissionId,
-                        SeverityEnum.ERROR.getLevel()
-                );
-        log.info("Total errors query took {}ms, result={}", System.currentTimeMillis() - queryStart, totalErrors);
+        // 1. Aggregated Data Fetching (Reduce DB Roundtrips)
+        // You should create a projection or DTO to hold counts grouped by Type and Severity
+        Map<String, Long> totalsMap = new HashMap<>();
+        totalsMap.put(IngestionTypeEnum.SOGGETTI.getLabel(), soggettiRepository.countBySubmissionId(submissionId));
+        totalsMap.put(IngestionTypeEnum.RAPPORTI.getLabel(), rapportiRepository.countBySubmissionId(submissionId));
+        totalsMap.put(IngestionTypeEnum.DATI_CONTABILI.getLabel(), datiContabiliRepository.countBySubmissionId(submissionId));
+        totalsMap.put(IngestionTypeEnum.COLLEGAMENTI.getLabel(), collegamentiRepository.countBySubmissionId(submissionId));
 
-        queryStart = System.currentTimeMillis();
-        long totalWarnings = errorCauseRepository.countDistinctErrorRecordsBySubmissionIdAndSeverityNative(
-                        submissionId,
-                        SeverityEnum.WARNING.getLevel()
-                );
-        log.info("Total warnings query took {}ms, result={}", System.currentTimeMillis() - queryStart, totalWarnings);
+        long totalTransactions = totalsMap.values().stream().mapToLong(Long::longValue).sum();
+        long totalErrorRecords = errorRecordRepository.countBySubmissionId(submissionId);
 
-        // Get transaction counts (already optimized)
-        queryStart = System.currentTimeMillis();
-        long totalSoggetti = soggettiRepository.countBySubmissionId(submissionId);
-        long totalRapporti = rapportiRepository.countBySubmissionId(submissionId);
-        long totalDatiContabili = datiContabiliRepository.countBySubmissionId(submissionId);
-        long totalCollegamenti = collegamentiRepository.countBySubmissionId(submissionId);
+        // 2. Build Issues Groups using a helper to avoid boilerplate
+        IssuesGroup soggettiIssues = buildIssuesGroup(submissionId, IngestionTypeEnum.SOGGETTI);
+        IssuesGroup rapportiIssues = buildIssuesGroup(submissionId, IngestionTypeEnum.RAPPORTI);
+        IssuesGroup datiContabiliIssues = buildIssuesGroup(submissionId, IngestionTypeEnum.DATI_CONTABILI);
+        IssuesGroup collegamentiIssues = buildIssuesGroup(submissionId, IngestionTypeEnum.COLLEGAMENTI);
 
-        long totalTransactions = totalSoggetti + totalRapporti + totalDatiContabili + totalCollegamenti;
-        log.info("Total transactions query took {}ms, Count={}", System.currentTimeMillis() - queryStart, totalTransactions);
-        
-        queryStart = System.currentTimeMillis();
-        long totalSoggetiWithErrorCount = errorRecordRepository.countErrorRecordsBySubmissionAndIngestionType(
-                submissionId,
-                IngestionTypeEnum.SOGGETTI.getLabel());
-        long totalRapportiWithErrorCount = errorRecordRepository.countErrorRecordsBySubmissionAndIngestionType(
-                submissionId,
-                IngestionTypeEnum.RAPPORTI.getLabel());
-        long totalDatiContabiliWithErrorCount = errorRecordRepository.countErrorRecordsBySubmissionAndIngestionType(
-                submissionId,
-                IngestionTypeEnum.DATI_CONTABILI.getLabel());
-        long totalCollegamentiWithErrorCount = errorRecordRepository.countErrorRecordsBySubmissionAndIngestionType(
-                submissionId,
-                IngestionTypeEnum.COLLEGAMENTI.getLabel());
-//        log.info("Total transactions with error query took {}ms, result={}", System.currentTimeMillis() - queryStart, totalTransactionsWithErrorCount);
-
-
-        List<ErrorTypeCountDTO> errorTypeCounts = errorCauseRepository.findErrorTypeCountsBySubmissionIdAndSeverityNative(
-                        submissionId,
-                        SeverityEnum.ERROR.getLevel()
-                );
-        List<ErrorTypeCountDTO> warningTypeCounts = errorCauseRepository.findErrorTypeCountsBySubmissionIdAndSeverityNative(
-                        submissionId,
-                        SeverityEnum.WARNING.getLevel()
-                );
-        List<ValidationReason> errorReasons = errorTypeCounts.stream()
-                .map(dto -> new ValidationReason(dto.errorTypeName(), dto.errorCode(), dto.count()))
-                .collect(Collectors.toList());
-
-        List<ValidationReason> warningReasons = warningTypeCounts.stream()
-                .map(dto -> new ValidationReason(dto.errorTypeName(), dto.errorCode(), dto.count()))
-                .collect(Collectors.toList());
-
-        ValidationGroup errorGroup = new ValidationGroup(totalErrors, errorReasons);
-        ValidationGroup warningGroup = new ValidationGroup(totalWarnings, warningReasons);
-
-        long totalDuration = System.currentTimeMillis() - methodStartTime;
-        log.info("buildValidationFromSubmissions completed in {}ms for submissionId={}", totalDuration, submissionId);
-
-        IssuesGroup soggetiIssuesGroup = new IssuesGroup(errorGroup, warningGroup);
-        IssuesGroup rapportiIssuesGroup = new IssuesGroup(errorGroup, warningGroup);
-        IssuesGroup datiContabiliIssuesGroup = new IssuesGroup(errorGroup, warningGroup);
-        IssuesGroup collegamentiIssuesGroup = new IssuesGroup(errorGroup, warningGroup);
+        log.info("buildValidationFromSubmissions completed in {}ms for submissionId={}",
+                System.currentTimeMillis() - methodStartTime, submissionId);
 
         return new ValidationPageDTO(
                 totalTransactions,
-                rapportiIssuesGroup,
-                soggetiIssuesGroup,
-                collegamentiIssuesGroup,
-                datiContabiliIssuesGroup);
+                totalErrorRecords,
+                rapportiIssues,
+                soggettiIssues,
+                datiContabiliIssues,
+                collegamentiIssues
+        );
+    }
+
+    /**
+     * Helper to consolidate the logic for each Ingestion Type
+     */
+    private IssuesGroup buildIssuesGroup(Long submissionId, IngestionTypeEnum type) {
+        String typeLabel = type.getLabel();
+
+        return new IssuesGroup(
+                getValidationGroup(submissionId, typeLabel, SeverityEnum.ERROR),
+                getValidationGroup(submissionId, typeLabel, SeverityEnum.WARNING)
+        );
+    }
+
+    private ValidationGroup getValidationGroup(Long submissionId, String typeLabel, SeverityEnum severity) {
+        // Total count for this specific group
+        long total = errorCauseRepository.countDistinctErrorRecordsBySubmissionIdAndSeverityAndIngestionType(
+                submissionId, severity.getLevel(), typeLabel);
+
+        // Specific reasons
+        List<ValidationReason> reasons = errorCauseRepository
+                .findErrorTypeCountsBySubmissionIdAndSeverityAndIngestionType(submissionId, severity.getLevel(), typeLabel)
+                .stream()
+                .map(dto -> new ValidationReason(dto.errorTypeName(), dto.errorCode(), dto.count()))
+                .collect(Collectors.toList());
+
+        return new ValidationGroup(total, reasons);
     }
 }

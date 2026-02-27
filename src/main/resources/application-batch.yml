@@ -3,6 +3,8 @@
 #
 # This profile is used for ECS Fargate batch ingestion jobs.
 # NO web server - runs as a command-line job and exits.
+# Multi-tenant: un solo tenant per run; TENANT_ID e DB_* passati dalla Lambda
+# (cartella S3 → tenant → override env sul task ECS).
 # ===================================================================
 
 # Disable web server - this is a batch job, not a web application
@@ -24,30 +26,9 @@ spring:
       pool:
         size: ${SPRING_TASK_SCHEDULING_POOL_SIZE}  # Minimum required by Spring Boot (even if not used)
 
-  datasource:
-    type: com.zaxxer.hikari.HikariDataSource
-    # Database connection - uses environment variables from ECS Task Definition
-    url: jdbc:mysql://${DB_HOST}:${DB_PORT:3306}/${DB_NAME}?useSSL=true&serverTimezone=UTC&allowPublicKeyRetrieval=true&autoReconnect=true&failOverReadOnly=false&maxReconnects=3&connectTimeout=30000&socketTimeout=3600000
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
-    driverClassName: com.mysql.cj.jdbc.Driver
-    hikari:
-      poolName: Hikari-Batch
-      auto-commit: false
-      # Larger pool for batch processing
-      maximum-pool-size: 15
-      minimum-idle: 5
-      connection-timeout: 60000   # 60 seconds (batch can wait longer)
-      idle-timeout: 300000        # 5 minutes
-      max-lifetime: 900000        # 15 minutes
-      leak-detection-threshold: 600000  # 10 minutes (batch operations are long)
-      validation-timeout: 10000
-      keepalive-time: 60000       # 1 minute keepalive (more frequent for long operations)
-      data-source-properties:
-        cachePrepStmts: true
-        prepStmtCacheSize: 500
-        prepStmtCacheSqlLimit: 4096
-        useServerPrepStmts: true
+  # Datasource: in batch usiamo TenantAwareDataSource (come dev/local).
+  # Le credenziali arrivano da variabili d'ambiente impostate dalla Lambda (Container Override).
+  # Non definiamo spring.datasource.* qui: il routing è gestito da multi-tenant.tenants.
 
   jpa:
     open-in-view: false
@@ -95,6 +76,9 @@ logging:
     org.hibernate.SQL: WARN
     org.hibernate.type.descriptor.sql.BasicBinder: WARN
     com.zaxxer.hikari: INFO
+    # JDBC/MariaDB driver: WARN to avoid logging query text and parameters (sensitive data)
+    org.mariadb.jdbc: WARN
+    org.mariadb: WARN
 
 # AWS S3 Configuration
 aws:
@@ -118,3 +102,23 @@ application:
   # LambdaAuthAspect, SecurityConfiguration are excluded via @Profile("!batch")
   # Note: cors.* properties not needed in batch mode
   # WebConfig is excluded via @Profile("!batch")
+
+# ===================================================================
+# Multi-Tenant (batch): un run = un tenant. Lambda passa TENANT_ID + DB_* nel Container Override.
+# Entrambi i tenant usano le stesse variabili d'ambiente per questo run (cartella → tenant → DB).
+# ===================================================================
+multi-tenant:
+  bootstrap-tenant: ${TENANT_ID:nexi}
+  tenants:
+    nexi:
+      database-name: ${DB_NAME:posappdb}
+      database-url: jdbc:mariadb://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:posappdb}?useSSL=true&serverTimezone=UTC&allowPublicKeyRetrieval=true&autoReconnect=true&failOverReadOnly=false&maxReconnects=3&connectTimeout=30000&socketTimeout=900000&trustServerCertificate=true
+      database-username: ${DB_USERNAME:posappusr}
+      database-password: ${DB_PASSWORD:}
+      output-codice-fiscale: "04107060966"
+    amex:
+      database-name: ${DB_NAME:posappdb}
+      database-url: jdbc:mariadb://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:posappdb}?useSSL=true&serverTimezone=UTC&allowPublicKeyRetrieval=true&autoReconnect=true&failOverReadOnly=false&maxReconnects=3&connectTimeout=30000&socketTimeout=900000&trustServerCertificate=true
+      database-username: ${DB_USERNAME:posappusr}
+      database-password: ${DB_PASSWORD:}
+      output-codice-fiscale: "14778691007"

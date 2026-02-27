@@ -146,6 +146,7 @@ public class InsightsController {
      *
      * @param fy     The Fiscal Year.
      * @param period The specific month name.
+     * @param type   The entity type: soggetti, rapporti, datiContabili, or collegamenti.
      * @return A {@link InsightsTransactionSankeyBreakdownDTO} containing nodes and links for the diagram.
      */
     @GetMapping("/transactions/sankey")
@@ -157,8 +158,9 @@ public class InsightsController {
     })
     public ResponseEntity<InsightsTransactionSankeyBreakdownDTO> getTransactionsSankeyBreakdown(
             @RequestParam("fy") Integer fy,
-            @RequestParam("period") String period) throws NotFoundRecordException {
-        InsightsTransactionSankeyBreakdownDTO insightsData = insightsService.getTransactionsSankeyBreakdown(fy, period);
+            @RequestParam("period") String period,
+            @RequestParam(value = "type", defaultValue = "soggetti") String type) throws NotFoundRecordException {
+        InsightsTransactionSankeyBreakdownDTO insightsData = insightsService.getTransactionsSankeyBreakdown(fy, period, type);
         return new ResponseEntity<>(insightsData, HttpStatus.OK);
     }
 }

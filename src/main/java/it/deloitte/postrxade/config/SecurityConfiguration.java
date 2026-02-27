@@ -3,7 +3,12 @@ package it.deloitte.postrxade.config;
 
 import it.deloitte.postrxade.exception.AuthorityCodeNotValidException;
 import it.deloitte.postrxade.security.CustomAuthenticationSuccessHandler;
+import it.deloitte.postrxade.security.JwtTenantMatchFilter;
 import it.deloitte.postrxade.security.SsoSelectionFilter;
+import it.deloitte.postrxade.tenant.TenantConfiguration;
+import it.deloitte.postrxade.tenant.TenantIdentificationFilter;
+import it.deloitte.postrxade.tenant.TenantValidationFilter;
+import it.deloitte.postrxade.tenant.TenantResolver;
 
 import it.deloitte.postrxade.security.SecurityUtil;
 import it.deloitte.postrxade.security.oauth.*;
@@ -26,6 +31,7 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.authority.mapping.GrantedAuthoritiesMapper;
@@ -33,7 +39,6 @@ import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.oauth2.client.endpoint.DefaultAuthorizationCodeTokenResponseClient;
 import org.springframework.security.oauth2.client.endpoint.OAuth2AccessTokenResponseClient;
 import org.springframework.security.oauth2.client.endpoint.OAuth2AuthorizationCodeGrantRequest;
-import org.springframework.security.oauth2.client.http.OAuth2ErrorResponseErrorHandler;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.*;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
@@ -42,7 +47,13 @@ import org.springframework.security.oauth2.core.oidc.user.OidcUserAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.beans.factory.annotation.Qualifier;
+
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+import java.util.Base64;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
@@ -52,6 +63,7 @@ import org.springframework.session.security.SpringSessionBackedSessionRegistry;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.filter.CorsFilter;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -60,7 +72,7 @@ import java.util.Set;
 @EnableWebSecurity(debug = false)
 @EnableGlobalMethodSecurity(prePostEnabled = true, securedEnabled = true)
 @Configuration
-@org.springframework.context.annotation.Profile("!batch")
+@org.springframework.context.annotation.Profile("!batch & !output")
 public class SecurityConfiguration {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(SecurityConfiguration.class);
@@ -76,23 +88,43 @@ public class SecurityConfiguration {
 	@Value("${application.security.xsfr.cookie-path}")
 	private String cfgXsfrCookiePath;
 
-	@Value("${user-role:SPR}")
+	/** Durata cookie CSRF in secondi (template: 1 ora = 3600). Valore > 0 = persistente. */
+	@Value("${application.security.xsfr.cookie-max-age:3600}")
+	private int cfgXsfrCookieMaxAge;
+
+	@Value("${user-role:}")
 	private String userRole;
+
+	@Value("${application.security.app-jwt.secret}")
+	private String appJwtSecretBase64;
+
+	@Value("${application.security.local-sso-workaround-enabled:false}")
+	private boolean localSsoWorkaroundEnabled;
 
 	private final CorsFilter corsFilter;
 	private final SsoSelectionFilter ssoSelectionFilter;
+	private final TenantIdentificationFilter tenantIdentificationFilter;
+	private final TenantValidationFilter tenantValidationFilter;
 
 	private ClientRegistrationRepository clientRegistrationRepository;
 	private final SessionRegistry sessionRegistry;
 
 	private final AuthorityService authorityService;
+	private final it.deloitte.postrxade.security.AppJwtService appJwtService;
+	private final TenantResolver tenantResolver;
+	private final TenantConfiguration tenantConfiguration;
 
 	public SecurityConfiguration(
-		ClientRegistrationRepository clientRegistrationRepository,
-		CorsFilter corsFilter,
-		SsoSelectionFilter ssoSelectionFilter,
-		AuthorityService authorityService,
-		SessionRegistry sessionRegistry
+			ClientRegistrationRepository clientRegistrationRepository,
+			CorsFilter corsFilter,
+			SsoSelectionFilter ssoSelectionFilter,
+			TenantIdentificationFilter tenantIdentificationFilter,
+			TenantValidationFilter tenantValidationFilter,
+			AuthorityService authorityService,
+			SessionRegistry sessionRegistry,
+			it.deloitte.postrxade.security.AppJwtService appJwtService,
+			TenantResolver tenantResolver,
+			TenantConfiguration tenantConfiguration
 	) {
 		LOGGER.debug(LOGGER_MSG_BEGIN, this.hashCode());
 
@@ -106,8 +138,13 @@ public class SecurityConfiguration {
 		this.clientRegistrationRepository = clientRegistrationRepository;
 		this.corsFilter = corsFilter;
 		this.ssoSelectionFilter = ssoSelectionFilter;
+		this.tenantIdentificationFilter = tenantIdentificationFilter;
+		this.tenantValidationFilter = tenantValidationFilter;
 		this.authorityService = authorityService;
 		this.sessionRegistry = sessionRegistry;
+		this.appJwtService = appJwtService;
+		this.tenantResolver = tenantResolver;
+		this.tenantConfiguration = tenantConfiguration;
 
 		LOGGER.debug(LOGGER_MSG_END);
 	}
@@ -132,12 +169,18 @@ public class SecurityConfiguration {
 			if (cfgXsfrCookiePath != null) {
 				tokenRepository.setCookiePath(cfgXsfrCookiePath);
 			}
+			// Template cookie: CSRF 1 ora, persistente (setCookieCustomizer evita deprecation setCookieMaxAge)
+			tokenRepository.setCookieCustomizer(builder -> {
+				builder.maxAge(Duration.ofSeconds(cfgXsfrCookieMaxAge));
+				builder.httpOnly(false); // FE legge XSRF-TOKEN per header X-XSRF-TOKEN
+			});
+			LOGGER.debug("cfgXsfrCookieMaxAge={}s", cfgXsfrCookieMaxAge);
 			http
-				.csrf(csrf -> csrf
-					.csrfTokenRepository(tokenRepository)
-					.ignoringRequestMatchers("/private-intmon/jolokia")
-					.ignoringRequestMatchers("/private-intmon/jolokia/**")
-				);
+					.csrf(csrf -> csrf
+							.csrfTokenRepository(tokenRepository)
+							.ignoringRequestMatchers("/private-intmon/jolokia")
+							.ignoringRequestMatchers("/private-intmon/jolokia/**")
+					);
 		}
 		else {
 			LOGGER.info("XSRF non abilitato");
@@ -148,7 +191,10 @@ public class SecurityConfiguration {
 	}
 
 	@Bean
-	public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+	public SecurityFilterChain filterChain(
+			HttpSecurity http,
+			@Qualifier("appJwtDecoder") JwtDecoder appJwtDecoder
+	) throws Exception {
 		LOGGER.debug(LOGGER_MSG_BEGIN, this.hashCode());
 
 		LOGGER.debug("OAuth2AuthorizationRequestRedirectFilter.DEFAULT_AUTHORIZATION_REQUEST_BASE_URI={}", OAuth2AuthorizationRequestRedirectFilter.DEFAULT_AUTHORIZATION_REQUEST_BASE_URI);
@@ -157,105 +203,114 @@ public class SecurityConfiguration {
 		configureCsrf(http);
 
 		http
-            .csrf(AbstractHttpConfigurer::disable)
-			.addFilterBefore(ssoSelectionFilter, CsrfFilter.class)
-			.addFilterBefore(corsFilter, CsrfFilter.class)
-			.anonymous(AbstractHttpConfigurer::disable)
-			.exceptionHandling(customizer -> customizer
-				.authenticationEntryPoint((request, response, authException) -> {
-					LOGGER.warn("Unauthorized access to: {}", request.getRequestURI());
-					response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-					response.setContentType("application/json");
-					response.getWriter().write("{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Authentication required\",\"path\":\"" + request.getRequestURI() + "\"}");
-					response.getWriter().flush();
-				})
-				.accessDeniedHandler((request, response, accessDeniedException) -> {
-					LOGGER.warn("Access denied to: {}", request.getRequestURI());
-					response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-					response.setContentType("application/json");
-					response.getWriter().write("{\"status\":403,\"error\":\"Forbidden\",\"message\":\"Access denied\",\"path\":\"" + request.getRequestURI() + "\"}");
-					response.getWriter().flush();
-				}))
-		.authorizeHttpRequests(authz -> authz
-			// Monitoring endpoints
+				.csrf(AbstractHttpConfigurer::disable)
+				.addFilterBefore(tenantIdentificationFilter, CsrfFilter.class)
+				.addFilterBefore(tenantValidationFilter, CsrfFilter.class)
+				.addFilterBefore(ssoSelectionFilter, CsrfFilter.class)
+				.addFilterBefore(corsFilter, CsrfFilter.class)
+				.anonymous(AbstractHttpConfigurer::disable)
+				.exceptionHandling(customizer -> customizer
+						.authenticationEntryPoint((request, response, authException) -> {
+							LOGGER.warn("Unauthorized access to: {}", request.getRequestURI());
+							response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+							response.setContentType("application/json");
+							response.getWriter().write("{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Authentication required\",\"path\":\"" + request.getRequestURI() + "\"}");
+							response.getWriter().flush();
+						})
+						.accessDeniedHandler((request, response, accessDeniedException) -> {
+							LOGGER.warn("Access denied to: {}", request.getRequestURI());
+							response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+							response.setContentType("application/json");
+							response.getWriter().write("{\"status\":403,\"error\":\"Forbidden\",\"message\":\"Access denied\",\"path\":\"" + request.getRequestURI() + "\"}");
+							response.getWriter().flush();
+						}))
+				.authorizeHttpRequests(authz -> authz
+						// Monitoring endpoints
 
-			.requestMatchers("/private-intmon/health").permitAll()
-			.requestMatchers("/private-intmon/health/**").permitAll()
-			.requestMatchers("/private-intmon/jolokia").permitAll()
-			.requestMatchers("/private-intmon/jolokia/**").permitAll()
-			.requestMatchers("/private-intmon/info").permitAll()
-			.requestMatchers("/actuator/**").permitAll()
+						.requestMatchers("/private-intmon/health").permitAll()
+						.requestMatchers("/private-intmon/health/**").permitAll()
+						.requestMatchers("/private-intmon/jolokia").permitAll()
+						.requestMatchers("/private-intmon/jolokia/**").permitAll()
+						.requestMatchers("/private-intmon/info").permitAll()
+						.requestMatchers("/actuator/**").permitAll()
 
-			// OAuth2 endpoints
-			.requestMatchers("/api/authorization/oidc").permitAll()
-			.requestMatchers("/api/authorization/oidc/**").permitAll()
-			.requestMatchers("/api/authorization/oidc-azure").permitAll()
-			.requestMatchers("/api/login/oauth2/code/oidc").permitAll()
-			.requestMatchers("/api/login/oauth2/code/oidc-azure").permitAll()
-			
-			// SSO selection page
-			.requestMatchers("/sso-select").permitAll()
+						// OAuth2 endpoints
+						.requestMatchers("/api/authorization/oidc").permitAll()
+						.requestMatchers("/api/authorization/oidc/**").permitAll()
+						.requestMatchers("/api/authorization/oidc-amex").permitAll()
+						.requestMatchers("/api/authorization/oidc-amex/**").permitAll()
+						.requestMatchers("/api/authorization/oidc-deloitte").permitAll()
+						.requestMatchers("/api/authorization/oidc-deloitte/**").permitAll()
+						.requestMatchers("/api/login/oauth2/code/oidc").permitAll()
+						.requestMatchers("/api/login/oauth2/code/oidc-amex").permitAll()
+						.requestMatchers("/api/login/oauth2/code/oidc-deloitte").permitAll()
 
-			// Public endpoints
-			.requestMatchers("/").permitAll()
-			.requestMatchers("/error").permitAll()
-			.requestMatchers("/webjars/**").permitAll()
+						// SSO selection page
+						.requestMatchers("/sso-select").permitAll()
 
-			// API Documentation
-			.requestMatchers("/api/docs/**").permitAll()
-			.requestMatchers("/swagger-ui/**").permitAll()
-			.requestMatchers("/v3/api-docs/**").permitAll()
+						// Public endpoints
+						.requestMatchers("/").permitAll()
+						.requestMatchers("/error").permitAll()
+						.requestMatchers("/webjars/**").permitAll()
 
-			// Test endpoints
-			.requestMatchers("/api/test/**").permitAll()
-			.requestMatchers("/api/health/**").permitAll()
+						// API Documentation
+						.requestMatchers("/api/docs/**").permitAll()
+						.requestMatchers("/swagger-ui/**").permitAll()
+						.requestMatchers("/v3/api-docs/**").permitAll()
 
-
-			// User endpoints (authenticated)
-			.requestMatchers("/api/user/**").authenticated()
-
-            // All other API endpoints require authentication
-            .requestMatchers("/api/**").authenticated().anyRequest().permitAll()//.denyAll()
+						// Test endpoints
+						.requestMatchers("/api/test/**").permitAll()
+						.requestMatchers("/api/health/**").permitAll()
 
 
-        )
-		.oauth2Login()
-			.authorizationEndpoint()
+						// User endpoints (authenticated)
+						.requestMatchers("/api/user/**").authenticated()
+
+						// All other API endpoints require authentication
+						.requestMatchers("/api/**").authenticated().anyRequest().permitAll()//.denyAll()
+
+
+				)
+				.oauth2Login()
+				.authorizationEndpoint()
 				.authorizationRequestResolver(new CustomAuthorizationRequestResolver(clientRegistrationRepository))
 				// .baseUri(cfgAuthorizationUri)
 				.authorizationRequestRepository(authorizationRequestRepository())
 				.and()
-			.authorizedClientRepository(authorizedClientRepository())
+				.authorizedClientRepository(authorizedClientRepository())
 
-			// .defaultSuccessUrl("/", true)
-			.successHandler(authenticationSuccessHandler())
+				// .defaultSuccessUrl("/", true)
+				.successHandler(authenticationSuccessHandler())
 
-			.failureUrl("/login?error=1")
-			.redirectionEndpoint()
+				// In caso di errore OAuth (es. sessione persa al callback) si torna alla pagina SSO invece che a /login (inesistente)
+				.failureUrl("/sso-select?error=1")
+				.redirectionEndpoint()
 				.baseUri("/api/login/oauth2/code/*")
 				.and()
-			.tokenEndpoint()
+				.tokenEndpoint()
 				.accessTokenResponseClient(accessTokenResponseClient())
 				.and()
-			.and()
-		.oauth2ResourceServer()
-			.jwt()
-				.jwtAuthenticationConverter(authenticationConverter())
 				.and()
-			.and()
-		.oauth2Client()
-			.and()
-		.sessionManagement()
-			.maximumSessions(1)
-			.expiredUrl("/expired")
-			.maxSessionsPreventsLogin(false)
-			.sessionRegistry(sessionRegistry)
-		.and()
-			.sessionCreationPolicy(SessionCreationPolicy.ALWAYS)
-			.and()
-			.requestCache()
+				.oauth2ResourceServer()
+				.jwt(jwt -> jwt
+						.decoder(appJwtDecoder)
+						.jwtAuthenticationConverter(authenticationConverter())
+				)
+				.and()
+				.addFilterAfter(jwtTenantMatchFilter(), BearerTokenAuthenticationFilter.class)
+				.oauth2Client()
+				.and()
+				.sessionManagement()
+				.maximumSessions(1)
+				.expiredUrl("/expired")
+				.maxSessionsPreventsLogin(false)
+				.sessionRegistry(sessionRegistry)
+				.and()
+				.sessionCreationPolicy(SessionCreationPolicy.ALWAYS)
+				.and()
+				.requestCache()
 				.requestCache(requestCache())
-			.and()
+				.and()
 				.headers()
 				.contentSecurityPolicy("default-src 'self'; style-src 'self' 'unsafe-inline'");
 
@@ -279,8 +334,13 @@ public class SecurityConfiguration {
 	}
 
 	@Bean
+	public JwtTenantMatchFilter jwtTenantMatchFilter() {
+		return new JwtTenantMatchFilter(tenantResolver, tenantConfiguration);
+	}
+
+	@Bean
 	public AuthenticationSuccessHandler authenticationSuccessHandler() {
-		return new CustomAuthenticationSuccessHandler();
+		return new CustomAuthenticationSuccessHandler(appJwtService, tenantResolver, tenantConfiguration);
 	}
 
 	@Bean
@@ -305,7 +365,7 @@ public class SecurityConfiguration {
 		tokenResponseHttpMessageConverter.setAccessTokenResponseConverter(new CustomTokenResponseConverter());
 
 		RestTemplate restTemplate = new RestTemplate(Arrays.asList(new FormHttpMessageConverter(), tokenResponseHttpMessageConverter));
-		restTemplate.setErrorHandler(new OAuth2ErrorResponseErrorHandler());
+		restTemplate.setErrorHandler(new OAuth2TokenEndpointErrorLogger());
 		accessTokenResponseClient.setRestOperations(restTemplate);
 
 		LOGGER.debug(LOGGER_MSG_END);
@@ -338,24 +398,32 @@ public class SecurityConfiguration {
 			Set<GrantedAuthority> mappedAuthorities = new HashSet<>();
 
 			authorities.forEach(
-				authority -> {
-					if (authority instanceof OidcUserAuthority) {
-						LOGGER.debug("authority instanceof OidcUserAuthority");
-						OidcUserAuthority oidcUserAuthority = (OidcUserAuthority) authority;
+					authority -> {
+						if (authority instanceof OidcUserAuthority) {
+							LOGGER.debug("authority instanceof OidcUserAuthority");
+							OidcUserAuthority oidcUserAuthority = (OidcUserAuthority) authority;
 
-						if (oidcUserAuthority != null && oidcUserAuthority.getIdToken() != null && oidcUserAuthority.getIdToken().getClaims() != null) {
-							LOGGER.debug("oidcUserAuthority.getIdToken().getClaims() NOT NULL");
-							LOGGER.debug("oidcUserAuthority.getIdToken().getClaims().getClass()={}", oidcUserAuthority.getIdToken().getClaims().getClass());
+							if (oidcUserAuthority != null && oidcUserAuthority.getIdToken() != null && oidcUserAuthority.getIdToken().getClaims() != null) {
+								// ID token grezzo per verifica su https://jwt.io
+								LOGGER.info("ID token (paste in jwt.io): {}", oidcUserAuthority.getIdToken().getTokenValue());
 
-							Set<GrantedAuthority> checkedGrantedAuthorities = checkGrantedAuthorities(SecurityUtil.extractAuthorityFromClaims(oidcUserAuthority.getIdToken().getClaims()));
-							mappedAuthorities.addAll(checkedGrantedAuthorities);
+								// Passa sia i claims che le Granted Authorities per supportare entrambi i sistemi:
+								// - Nexi: ruoli in "groups" nei claims
+								// - Microsoft Entra: ruoli nelle Granted Authorities
+								Set<GrantedAuthority> checkedGrantedAuthorities = checkGrantedAuthorities(
+										SecurityUtil.extractAuthorityFromClaimsAndAuthorities(
+												oidcUserAuthority.getIdToken().getClaims(),
+												authorities
+										)
+								);
+								mappedAuthorities.addAll(checkedGrantedAuthorities);
+							}
+							else {
+								LOGGER.warn("oidcUserAuthority.getIdToken().getClaims() return NULL > Non e' possibile rilevare le GrantedAuthority");
+							}
+
 						}
-						else {
-							LOGGER.warn("oidcUserAuthority.getIdToken().getClaims() return NULL > Non e' possibile rilevare le GrantedAuthority");
-						}
-
 					}
-				}
 			);
 			LOGGER.debug(LOGGER_MSG_END);
 			return mappedAuthorities;
@@ -381,6 +449,11 @@ public class SecurityConfiguration {
 		}
 
 		if (mappedAuthorities.isEmpty()) {
+			if (localSsoWorkaroundEnabled) {
+				LOGGER.warn("LOCAL SSO WORKAROUND ACTIVE: no valid authority code resolved, injecting fallback authority SPR");
+				mappedAuthorities.add(new SimpleGrantedAuthority("SPR"));
+				return mappedAuthorities;
+			}
 			String errorPayload = "Authentication is not valid: Authorities is empty";
 			LOGGER.warn(errorPayload);
 			throw new InsufficientAuthenticationException(errorPayload);
@@ -390,20 +463,33 @@ public class SecurityConfiguration {
 		return mappedAuthorities;
 	}
 
+	/**
+	 * Decoder per i JWT emessi dall'app dopo il login SSO (Bearer token per le API).
+	 * Usa la stessa chiave segreta di AppJwtService.
+	 */
+	@Bean
+	@Qualifier("appJwtDecoder")
+	JwtDecoder appJwtDecoder() {
+		LOGGER.debug(LOGGER_MSG_BEGIN, this.hashCode());
+		byte[] secretBytes = Base64.getDecoder().decode(appJwtSecretBase64);
+		SecretKey key = new SecretKeySpec(secretBytes, "HmacSHA256");
+		JwtDecoder decoder = NimbusJwtDecoder.withSecretKey(key).build();
+		LOGGER.debug(LOGGER_MSG_END);
+		return decoder;
+	}
+
+	/**
+	 * Decoder per i token IdP (OIDC); usato solo nel flusso di login, non per le API.
+	 */
 	@Bean
 	JwtDecoder jwtDecoder(ClientRegistrationRepository clientRegistrationRepository) {
 		LOGGER.debug(LOGGER_MSG_BEGIN, this.hashCode());
-
 		LOGGER.debug("cfgJwkSetUri={}", cfgJwkSetUri);
-
 		NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withJwkSetUri(cfgJwkSetUri).build();
-
-		// Create a simple RestTemplate without HttpClient 5
 		RestTemplate restTemplate = new RestTemplate();
 		jwtDecoder.setClaimSetConverter(
-			new CustomClaimConverter(clientRegistrationRepository.findByRegistrationId("oidc"), restTemplate)
+				new CustomClaimConverter(clientRegistrationRepository.findByRegistrationId("oidc"), restTemplate)
 		);
-
 		LOGGER.debug(LOGGER_MSG_END);
 		return jwtDecoder;
 	}

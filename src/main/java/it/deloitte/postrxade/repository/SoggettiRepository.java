@@ -40,10 +40,8 @@ public interface SoggettiRepository extends JpaRepository<Soggetti, Long>, Sogge
             """)
     int deleteBySubmissionId(@Param("submissionId") Long submissionId);
 
-    @Query("""
-              SELECT COUNT(t)
-              FROM Soggetti s
-              WHERE s.submission.id = :submissionId
-            """)
-    long countBySubmissionId(@Param("submissionId") Long submissionId);
+    long countBySubmissionId(Long submissionId);
+
+    @Query("SELECT COUNT(s) FROM Soggetti s WHERE s.submission.id IN :submissionIds")
+    long countBySubmissionIn(@Param("submissionIds") List<Long> submissionIds);
 }

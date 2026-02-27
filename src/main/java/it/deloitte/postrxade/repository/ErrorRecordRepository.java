@@ -19,6 +19,7 @@ public interface ErrorRecordRepository extends JpaRepository<ErrorRecord, Long>,
 //    long countByIngestionIdAndErrorTypeSeverityLevel(Long ingestionId, int severityLevel);
 
     long countByIngestionIdAndIngestionIngestionTypeName(Long ingestionId, String ingestionTypeId);
+    long countBySubmissionId(Long submissionId);
 
     @Query("""
             SELECT COUNT(er)
@@ -70,7 +71,7 @@ public interface ErrorRecordRepository extends JpaRepository<ErrorRecord, Long>,
             FROM ErrorRecord er
             JOIN er.ingestion i
             WHERE i.id = :ingestionId
-            AND i.ingestionType.name = : ingestionTypeName
+            AND i.ingestionType.name = :ingestionTypeName
             """)
     Long countErrorRecordsByIngestionIdAndIngestionTypeName(@Param("ingestionId") Long ingestionId, @Param("ingestionTypeName") String ingestionTypeName);
 

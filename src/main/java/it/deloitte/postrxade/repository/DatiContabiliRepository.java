@@ -40,10 +40,8 @@ public interface DatiContabiliRepository extends JpaRepository<DatiContabili, Lo
             """)
     int deleteBySubmissionId(@Param("submissionId") Long submissionId);
 
-    @Query("""
-              SELECT COUNT(t)
-              FROM DatiContabili dc
-              WHERE dc.submission.id = :submissionId
-            """)
-    long countBySubmissionId(@Param("submissionId") Long submissionId);
+    long countBySubmissionId(Long submissionId);
+
+    @Query("SELECT COUNT(dc) FROM DatiContabili dc WHERE dc.submission.id IN :submissionIds")
+    long countBySubmissionIn(@Param("submissionIds") List<Long> submissionIds);
 }

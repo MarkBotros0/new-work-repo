@@ -45,5 +45,4 @@ public class Log {
 
     @Column(name = "message")
     private String message;
-
 }

@@ -45,10 +45,11 @@ public interface InsightsService {
      *
      * @param fy     The Fiscal Year.
      * @param period The Period Name.
+     * @param type   The entity type: soggetti, rapporti, datiContabili, or collegamenti.
      * @return {@link InsightsTransactionSankeyBreakdownDTO} with nodes and links.
      * @throws NotFoundRecordException If the current period data is corrupt.
      */
-    InsightsTransactionSankeyBreakdownDTO getTransactionsSankeyBreakdown(Integer fy, String period) throws NotFoundRecordException;
+    InsightsTransactionSankeyBreakdownDTO getTransactionsSankeyBreakdown(Integer fy, String period, String type) throws NotFoundRecordException;
 
     /**
      * Retrieves a detailed daily breakdown of payment volumes for the specified month.

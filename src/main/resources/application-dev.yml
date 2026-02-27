@@ -197,6 +197,16 @@ aws:
     output-folder: ${S3_BUCKET_OUTPUT_FOLDER}
     input-folder: ${S3_BUCKET_INPUT_FOLDER}
     input-folder-loaded: ${S3_BUCKET_INPUT_FOLDER_LOADED}
+  ecs:
+    enabled: ${AWS_ECS_ENABLED:true}
+    cluster-name: ${AWS_ECS_CLUSTER_NAME:}
+    task-definition-output: ${AWS_ECS_TASK_DEFINITION_OUTPUT:}
+    container-name-output: ${AWS_ECS_CONTAINER_NAME_OUTPUT:output-generation}
+    subnet-ids: ${AWS_ECS_SUBNET_IDS:}
+    security-group-ids: ${AWS_ECS_SECURITY_GROUP_IDS:}
+    launch-type: ${AWS_ECS_LAUNCH_TYPE:FARGATE}
+    # Optional: override OUTPUT_ROWS_PER_FILE for ECS output task
+    output-rows-per-file: ${AWS_ECS_OUTPUT_ROWS_PER_FILE:}
     # H2 Database for development (commented out)
     # url: jdbc:h2:mem:posdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     # username: sa
@@ -250,6 +260,12 @@ application:
         tracing-request:
             enabled: true
     security:
+        # Keep disabled outside local tests.
+        local-sso-workaround-enabled: false
+        # JWT emesso dall'app dopo login SSO: il FE lo invia come Bearer.
+        app-jwt:
+            secret: ${APP_JWT_SECRET:dGVzdC1zZWNyZXQtYXBwLWp3dC0zMi1ieXRlcy1taW5pbXVtLWxlbg==}
+            expiration-seconds: 3600
         lambda-token: "my-secret-test-token-123"
         xsfr:
             enabled: true
@@ -287,3 +303,40 @@ application:
 
 # Docker Compose disabled - using external MySQL database
 # Alternative: Set system property -Dspring.docker.compose.enabled=false
+
+
+
+# ===================================================================
+# Multi-Tenant Configuration
+# Tenant nexi = Nexi, amex = Amex. Domini test: docs/env-and-deployment.md.
+# DB: stesso server (DB_HOST:DB_PORT), credenziali per tenant da variabili NEXI_DB_* / AMEX_DB_*.
+# ===================================================================
+multi-tenant:
+    # Dominio per riconoscere il tenant dall'host (es. nexi-be.xxx.com → nexi). In prod impostare CORS_TENANT_BASE_DOMAIN.
+    tenant-host-base-domain: ${CORS_TENANT_BASE_DOMAIN:testpos-noprod.com}
+    bootstrap-tenant: nexi
+    provider-display-names:
+        oidc: Nexi
+        oidc-amex: Amex
+        oidc-deloitte: Deloitte
+    tenants:
+        nexi:
+            database-name: ${NEXI_DB_NAME:posappdb}
+            database-url: jdbc:mariadb://${DB_HOST:db-pos-nprod.c1ocgkekaqhr.eu-central-1.rds.amazonaws.com}:${DB_PORT:3306}/${NEXI_DB_NAME:posappdb}?useSSL=true&serverTimezone=UTC&allowPublicKeyRetrieval=true&trustServerCertificate=true
+            database-username: ${NEXI_DB_USER:posappusr}
+            database-password: ${NEXI_DB_PASSWORD:GNEMOBY}
+            output-codice-fiscale: "04107060966"
+            sso:
+                providers:
+                    - oidc
+                    - oidc-deloitte
+        amex:
+            database-name: ${AMEX_DB_NAME:aziendab_posappdb}
+            database-url: jdbc:mariadb://${DB_HOST:db-pos-nprod.c1ocgkekaqhr.eu-central-1.rds.amazonaws.com}:${DB_PORT:3306}/${AMEX_DB_NAME:aziendab_posappdb}?useSSL=true&serverTimezone=UTC&allowPublicKeyRetrieval=true&trustServerCertificate=true
+            database-username: ${AMEX_DB_USER:aziendab_posappusr}
+            database-password: ${AMEX_DB_PASSWORD:GNEMOBY}
+            output-codice-fiscale: "14778691007"
+            sso:
+                providers:
+                    - oidc-amex
+                    - oidc-deloitte
