@@ -52,4 +52,37 @@ public interface CollegamentiRepositoryCustom {
      * Returns List<Object[]> where each array contains [ndg, chiave_rapporto].
      */
     List<Object[]> findNdgAndChiaviByIds(List<Long> collegamentiIds);
+
+    /**
+     * Find orphan Collegamenti records that don't have ANY children (missing BOTH Soggetti AND Rapporti).
+     * Returns a list of Object[] where:
+     * - [0] = pk_collegamenti (Long)
+     * - [1] = ndg (String)
+     * - [2] = chiave_rapporto (String)
+     * - [3] = has_soggetti (Integer: 1 if exists, 0 if missing)
+     * - [4] = has_rapporti (Integer: 1 if exists, 0 if missing)
+     * - [5] = raw_row (String) - reconstructed from Collegamenti fields
+     * 
+     * @param submissionId The submission ID to check
+     * @return List of orphan Collegamenti with metadata about missing children
+     */
+    List<Object[]> findOrphanCollegamenti(Long submissionId);
+
+    /**
+     * Find Soggetti records whose Collegamenti parent is missing BOTH children (will be deleted).
+     * These Soggetti will become orphans when their Collegamenti parent is deleted.
+     * 
+     * @param submissionId The submission ID to check
+     * @return List of Object[] with [pk_soggetti, ndg, raw_row]
+     */
+    List<Object[]> findSoggettiToOrphan(Long submissionId);
+
+    /**
+     * Find Rapporti records whose Collegamenti parent is missing BOTH children (will be deleted).
+     * These Rapporti will become orphans when their Collegamenti parent is deleted.
+     * 
+     * @param submissionId The submission ID to check
+     * @return List of Object[] with [pk_rapporti, chiave_rapporto, raw_row]
+     */
+    List<Object[]> findRapportiToOrphan(Long submissionId);
 }

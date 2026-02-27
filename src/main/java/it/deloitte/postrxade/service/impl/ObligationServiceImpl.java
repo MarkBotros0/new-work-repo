@@ -16,6 +16,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
 import it.deloitte.postrxade.entity.*;
+import it.deloitte.postrxade.enums.*;
 import it.deloitte.postrxade.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -27,10 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 import it.deloitte.postrxade.dto.PeriodSubmissionData;
 import it.deloitte.postrxade.dto.SubmissionCustomDTO;
 import it.deloitte.postrxade.dto.ValidationDTO;
-import it.deloitte.postrxade.enums.IngestionStatusEnum;
-import it.deloitte.postrxade.enums.IngestionTypeEnum;
-import it.deloitte.postrxade.enums.SeverityEnum;
-import it.deloitte.postrxade.enums.SubmissionStatusEnum;
 import it.deloitte.postrxade.exception.NotFoundRecordException;
 import it.deloitte.postrxade.parser.merchants.MerchantFileProcessingService;
 import it.deloitte.postrxade.parser.transaction.RemoteFile;
@@ -126,6 +123,9 @@ public class ObligationServiceImpl implements ObligationService {
 
     @Autowired
     private ErrorCauseRepository errorCauseRepository;
+
+    @Autowired
+    private ErrorTypeRepository errorTypeRepository;
 
     @Autowired
     @Qualifier("mapperFacade")
@@ -1076,6 +1076,16 @@ public class ObligationServiceImpl implements ObligationService {
 
         stagingIngestionService.cleanupStaging(submission.getId());
 
+        // =====================================================
+        // ORPHAN VALIDATION PHASE
+        // Validate Collegamenti have corresponding Soggetti and Rapporti children
+        // Delete orphans and cascade delete to orphaned children
+        // =====================================================
+        log.info("=== STAGING Orphan Validation: Checking Collegamenti integrity ===");
+        OrphanValidationResult orphanResult = validateAndCleanOrphanCollegamenti(submission, ingestionRef.get());
+        log.info("=== STAGING Orphan Validation Complete: {} total records deleted (Collegamenti: {}, Soggetti: {}, Rapporti: {}) ===",
+                orphanResult.totalDeleted(), orphanResult.collegamentiDeleted(), orphanResult.soggettiDeleted(), orphanResult.rapportiDeleted());
+
         long totalElapsed = System.currentTimeMillis() - totalStartTime;
         log.info("=== STAGING INGESTION COMPLETE in {}ms ({} seconds) ===", totalElapsed, totalElapsed / 1000);
         log.info("Summary: collegamenti={}/{} inserted/dup, soggetti={}/{} inserted/dup, rapporti={}/{} inserted/dup, daticontabili={}/{} inserted/dup, cambiondg={}/{} inserted/dup",
@@ -1312,6 +1322,177 @@ public class ObligationServiceImpl implements ObligationService {
                 ingestionService.markAsSuccess(ingestionRef.get());
 //                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
             }
+        }
+
+        // =====================================================
+        // ORPHAN VALIDATION PHASE
+        // Validate Collegamenti have corresponding Soggetti and Rapporti children
+        // Delete orphans and cascade delete to orphaned children
+        // =====================================================
+        log.info("=== LEGACY Orphan Validation: Checking Collegamenti integrity ===");
+        OrphanValidationResult orphanResult = validateAndCleanOrphanCollegamenti(submission, ingestionRef.get());
+        log.info("=== LEGACY Orphan Validation Complete: {} total records deleted (Collegamenti: {}, Soggetti: {}, Rapporti: {}) ===",
+                orphanResult.totalDeleted(), orphanResult.collegamentiDeleted(), orphanResult.soggettiDeleted(), orphanResult.rapportiDeleted());
+    }
+
+    /**
+     * Validates and cleans orphan Collegamenti records and their children.
+     * 
+     * Process:
+     * 1. Find Collegamenti missing BOTH Soggetti AND Rapporti → Delete + create error
+     * 2. Find Soggetti whose Collegamenti parent will be deleted → Delete + create error
+     * 3. Find Rapporti whose Collegamenti parent will be deleted → Delete + create error
+     * 
+     * This ensures data integrity by removing Collegamenti with no children and cascading
+     * the deletion to any children that would become orphaned.
+     * 
+     * @param submission The submission to validate
+     * @param ingestion The ingestion to associate error records with
+     * @return OrphanValidationResult containing counts of deleted records
+     */
+    private OrphanValidationResult validateAndCleanOrphanCollegamenti(Submission submission, Ingestion ingestion) {
+        log.info("Starting orphan Collegamenti validation for submission: {}", submission.getId());
+        
+        long startTime = System.currentTimeMillis();
+        
+        // Step 1: Find Collegamenti missing BOTH children
+        List<Object[]> orphanCollegamenti = collegamentiRepository.findOrphanCollegamenti(submission.getId());
+        
+        if (orphanCollegamenti.isEmpty()) {
+            log.info("No orphan Collegamenti found for submission: {}", submission.getId());
+            return new OrphanValidationResult(0, 0, 0);
+        }
+        
+        log.warn("Found {} orphan Collegamenti records (missing BOTH Soggetti AND Rapporti) for submission: {}", 
+                orphanCollegamenti.size(), submission.getId());
+        
+        // Step 2: Find Soggetti that will become orphaned when Collegamenti is deleted
+        List<Object[]> soggettiToOrphan = collegamentiRepository.findSoggettiToOrphan(submission.getId());
+        log.info("Found {} Soggetti records that will be orphaned when Collegamenti is deleted", soggettiToOrphan.size());
+        
+        // Step 3: Find Rapporti that will become orphaned when Collegamenti is deleted
+        List<Object[]> rapportiToOrphan = collegamentiRepository.findRapportiToOrphan(submission.getId());
+        log.info("Found {} Rapporti records that will be orphaned when Collegamenti is deleted", rapportiToOrphan.size());
+        
+        // Get error types
+        ErrorType orphanCollegamentiType = errorTypeRepository.findByErrorCode(ErrorTypeCode.ORPHAN_COLLEGAMENTI.getErrorCode())
+                .orElseThrow(() -> new RuntimeException("Error type ORPHAN_COLLEGAMENTI not found in database"));
+        ErrorType orphanSoggettiType = errorTypeRepository.findByErrorCode(ErrorTypeCode.ORPHAN_SOGGETTI.getErrorCode())
+                .orElseThrow(() -> new RuntimeException("Error type ORPHAN_SOGGETTI not found in database"));
+        ErrorType orphanRapportiType = errorTypeRepository.findByErrorCode(ErrorTypeCode.ORPHAN_RAPPORTI.getErrorCode())
+                .orElseThrow(() -> new RuntimeException("Error type ORPHAN_RAPPORTI not found in database"));
+        
+        // Track IDs for deletion
+        List<Long> collegamentiIds = new ArrayList<>();
+        List<Long> soggettiIds = new ArrayList<>();
+        List<Long> rapportiIds = new ArrayList<>();
+        
+        // Step 4: Create error records for orphan Collegamenti
+        for (Object[] orphan : orphanCollegamenti) {
+            Long collegamentiId = ((Number) orphan[0]).longValue();
+            String ndg = (String) orphan[1];
+            String chiaveRapporto = (String) orphan[2];
+            String rawRow = (String) orphan[5];
+            
+            collegamentiIds.add(collegamentiId);
+            
+            String errorMessage = String.format(
+                "Collegamenti record (ID: %d, NDG: %s, chiave_rapporto: %s) is orphaned - missing both Soggetti and Rapporti children. " +
+                "This Collegamenti will be deleted to maintain data integrity.",
+                collegamentiId, ndg, chiaveRapporto
+            );
+            
+            createErrorRecord(ingestion, submission, rawRow, orphanCollegamentiType, errorMessage);
+            log.debug("Created error record for orphan Collegamenti: {}", errorMessage);
+        }
+        
+        // Step 5: Create error records for Soggetti that will be orphaned
+        for (Object[] soggetto : soggettiToOrphan) {
+            Long soggettiId = ((Number) soggetto[0]).longValue();
+            String ndg = (String) soggetto[1];
+            String rawRow = (String) soggetto[2];
+            
+            soggettiIds.add(soggettiId);
+            
+            String errorMessage = String.format(
+                "Soggetti record (ID: %d, NDG: %s) will be orphaned because its Collegamenti parent (NDG: %s) has no children and will be deleted. " +
+                "This Soggetti will be deleted to maintain referential integrity.",
+                soggettiId, ndg, ndg
+            );
+            
+            createErrorRecord(ingestion, submission, rawRow, orphanSoggettiType, errorMessage);
+            log.debug("Created error record for orphaned Soggetti: {}", errorMessage);
+        }
+        
+        // Step 6: Create error records for Rapporti that will be orphaned
+        for (Object[] rapporto : rapportiToOrphan) {
+            Long rapportiId = ((Number) rapporto[0]).longValue();
+            String chiaveRapporto = (String) rapporto[1];
+            String rawRow = (String) rapporto[2];
+            
+            rapportiIds.add(rapportiId);
+            
+            String errorMessage = String.format(
+                "Rapporti record (ID: %d, chiave_rapporto: %s) will be orphaned because its Collegamenti parent (chiave_rapporto: %s) has no children and will be deleted. " +
+                "This Rapporti will be deleted to maintain referential integrity.",
+                rapportiId, chiaveRapporto, chiaveRapporto
+            );
+            
+            createErrorRecord(ingestion, submission, rawRow, orphanRapportiType, errorMessage);
+            log.debug("Created error record for orphaned Rapporti: {}", errorMessage);
+        }
+        
+        // Step 7: Delete in correct order (children first, then parent)
+        if (!soggettiIds.isEmpty()) {
+            log.info("Deleting {} orphaned Soggetti records", soggettiIds.size());
+            soggettiRepository.deleteAllById(soggettiIds);
+            log.info("Successfully deleted {} Soggetti records", soggettiIds.size());
+        }
+        
+        if (!rapportiIds.isEmpty()) {
+            log.info("Deleting {} orphaned Rapporti records", rapportiIds.size());
+            rapportiRepository.deleteAllById(rapportiIds);
+            log.info("Successfully deleted {} Rapporti records", rapportiIds.size());
+        }
+        
+        if (!collegamentiIds.isEmpty()) {
+            log.info("Deleting {} orphan Collegamenti records", collegamentiIds.size());
+            collegamentiRepository.deleteAllById(collegamentiIds);
+            log.info("Successfully deleted {} Collegamenti records", collegamentiIds.size());
+        }
+        
+        long elapsedTime = System.currentTimeMillis() - startTime;
+        log.info("Orphan validation completed in {}ms - Deleted: {} Collegamenti, {} Soggetti, {} Rapporti",
+                elapsedTime, collegamentiIds.size(), soggettiIds.size(), rapportiIds.size());
+        
+        return new OrphanValidationResult(collegamentiIds.size(), soggettiIds.size(), rapportiIds.size());
+    }
+    
+    /**
+     * Helper method to create error record and error cause.
+     */
+    private void createErrorRecord(Ingestion ingestion, Submission submission, String rawRow, 
+                                   ErrorType errorType, String errorMessage) {
+        ErrorRecord errorRecord = new ErrorRecord();
+        errorRecord.setIngestion(ingestion);
+        errorRecord.setSubmission(submission);
+        errorRecord.setRawRow(rawRow != null && rawRow.length() > 250 ? rawRow.substring(0, 250) : rawRow);
+        errorRecordRepository.save(errorRecord);
+        
+        ErrorCause errorCause = new ErrorCause();
+        errorCause.setErrorRecord(errorRecord);
+        errorCause.setErrorType(errorType);
+        errorCause.setErrorMessage(errorMessage);
+        errorCause.setSubmission(submission);
+        errorCauseRepository.save(errorCause);
+    }
+    
+    /**
+     * Result of orphan validation containing counts of deleted records.
+     */
+    private record OrphanValidationResult(int collegamentiDeleted, int soggettiDeleted, int rapportiDeleted) {
+        public int totalDeleted() {
+            return collegamentiDeleted + soggettiDeleted + rapportiDeleted;
         }
     }
 

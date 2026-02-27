@@ -560,4 +560,144 @@ public class CollegamentiRepositoryImpl implements CollegamentiRepositoryCustom 
 
         return results;
     }
+
+    @Override
+    public List<Object[]> findOrphanCollegamenti(Long submissionId) {
+        String nativeSql = """
+                SELECT 
+                    c.pk_collegamenti,
+                    c.ndg,
+                    c.chiave_rapporto,
+                    CASE WHEN s.pk_soggetti IS NOT NULL THEN 1 ELSE 0 END AS has_soggetti,
+                    CASE WHEN r.pk_rapporti IS NOT NULL THEN 1 ELSE 0 END AS has_rapporti,
+                    CONCAT_WS('|',
+                        COALESCE(c.intermediario, ''),
+                        COALESCE(c.chiave_rapporto, ''),
+                        COALESCE(c.ndg, ''),
+                        COALESCE(c.ruolo, ''),
+                        COALESCE(c.data_inizio_collegamento, ''),
+                        COALESCE(c.data_fine_collegamento, ''),
+                        COALESCE(c.ruolo_interno, ''),
+                        COALESCE(c.flag_stato_collegamento, ''),
+                        COALESCE(c.data_predisposizione_flusso, ''),
+                        COALESCE(c.controllo_di_fine_riga, '')
+                    ) AS raw_row
+                FROM MERCHANT_COLLEGAMENTI c
+                LEFT JOIN MERCHANT_SOGGETTI s 
+                    ON c.ndg = s.ndg 
+                    AND c.fk_submission = s.fk_submission
+                LEFT JOIN MERCHANT_RAPPORTI r 
+                    ON c.chiave_rapporto = r.chiave_rapporto 
+                    AND c.fk_submission = r.fk_submission
+                WHERE c.fk_submission = :submissionId
+                  AND s.pk_soggetti IS NULL 
+                  AND r.pk_rapporti IS NULL
+                """;
+
+        Query query = entityManager.createNativeQuery(nativeSql);
+        query.setParameter("submissionId", submissionId);
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> results = query.getResultList();
+
+        return results;
+    }
+
+    @Override
+    public List<Object[]> findSoggettiToOrphan(Long submissionId) {
+        // Find Soggetti whose Collegamenti parent has NO children (will be deleted)
+        String nativeSql = """
+                SELECT 
+                    s.pk_soggetti,
+                    s.ndg,
+                    CONCAT_WS('|',
+                        COALESCE(s.intermediario, ''),
+                        COALESCE(s.ndg, ''),
+                        COALESCE(s.data_censimento_anagrafico, ''),
+                        COALESCE(s.data_estinzione_anagrafica, ''),
+                        COALESCE(s.filiale_censimento_anagrafico, ''),
+                        COALESCE(s.tipo_soggetto, ''),
+                        COALESCE(s.natura_giuridica, ''),
+                        COALESCE(s.sesso, ''),
+                        COALESCE(s.codice_fiscale, ''),
+                        COALESCE(s.cognome, ''),
+                        COALESCE(s.nome, ''),
+                        COALESCE(s.data_nascita, ''),
+                        COALESCE(s.comune, ''),
+                        COALESCE(s.provincia, ''),
+                        COALESCE(s.nazione, ''),
+                        COALESCE(s.data_predisposizione_flusso, ''),
+                        COALESCE(s.controllo_di_fine_riga, '')
+                    ) AS raw_row
+                FROM MERCHANT_SOGGETTI s
+                INNER JOIN MERCHANT_COLLEGAMENTI c 
+                    ON s.ndg = c.ndg 
+                    AND s.fk_submission = c.fk_submission
+                LEFT JOIN MERCHANT_SOGGETTI s2 
+                    ON c.ndg = s2.ndg 
+                    AND c.fk_submission = s2.fk_submission
+                LEFT JOIN MERCHANT_RAPPORTI r 
+                    ON c.chiave_rapporto = r.chiave_rapporto 
+                    AND c.fk_submission = r.fk_submission
+                WHERE s.fk_submission = :submissionId
+                  AND s2.pk_soggetti IS NULL 
+                  AND r.pk_rapporti IS NULL
+                """;
+
+        Query query = entityManager.createNativeQuery(nativeSql);
+        query.setParameter("submissionId", submissionId);
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> results = query.getResultList();
+
+        return results;
+    }
+
+    @Override
+    public List<Object[]> findRapportiToOrphan(Long submissionId) {
+        // Find Rapporti whose Collegamenti parent has NO children (will be deleted)
+        String nativeSql = """
+                SELECT 
+                    r.pk_rapporti,
+                    r.chiave_rapporto,
+                    CONCAT_WS('|',
+                        COALESCE(r.intermediario, ''),
+                        COALESCE(r.chiave_rapporto, ''),
+                        COALESCE(r.tipo_rapporto_interno, ''),
+                        COALESCE(r.forma_tecnica, ''),
+                        COALESCE(r.filiale, ''),
+                        COALESCE(r.cab, ''),
+                        COALESCE(r.numero_conto, ''),
+                        COALESCE(r.cin, ''),
+                        COALESCE(r.divisa, ''),
+                        COALESCE(r.data_inizio_rapporto, ''),
+                        COALESCE(r.data_fine_rapporto, ''),
+                        COALESCE(r.note, ''),
+                        COALESCE(r.flag_stato_rapporto, ''),
+                        COALESCE(r.data_predisposizione, ''),
+                        COALESCE(r.controllo_di_fine_riga, '')
+                    ) AS raw_row
+                FROM MERCHANT_RAPPORTI r
+                INNER JOIN MERCHANT_COLLEGAMENTI c 
+                    ON r.chiave_rapporto = c.chiave_rapporto 
+                    AND r.fk_submission = c.fk_submission
+                LEFT JOIN MERCHANT_SOGGETTI s 
+                    ON c.ndg = s.ndg 
+                    AND c.fk_submission = s.fk_submission
+                LEFT JOIN MERCHANT_RAPPORTI r2 
+                    ON c.chiave_rapporto = r2.chiave_rapporto 
+                    AND c.fk_submission = r2.fk_submission
+                WHERE r.fk_submission = :submissionId
+                  AND s.pk_soggetti IS NULL 
+                  AND r2.pk_rapporti IS NULL
+                """;
+
+        Query query = entityManager.createNativeQuery(nativeSql);
+        query.setParameter("submissionId", submissionId);
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> results = query.getResultList();
+
+        return results;
+    }
 }

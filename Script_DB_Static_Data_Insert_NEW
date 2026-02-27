@@ -111,6 +111,15 @@ VALUES(6, 'Transaction already exists', 'Transaction can''t be created as it is 
 INSERT INTO ERROR_TYPE
 (pk_error_type, name, description, serverity_level, is_active, error_code)
 VALUES(7, 'Merchant already exists', 'Merchant can''t be created as it is already existing based on uniqu constrain', 2, 1, 'ERR3');
+INSERT INTO ERROR_TYPE
+(pk_error_type, name, description, serverity_level, is_active, error_code)
+VALUES(8, 'Orphan Collegamenti', 'Collegamenti record without corresponding Soggetti or Rapporti child records', 2, 1, 'ERR4');
+INSERT INTO ERROR_TYPE
+(pk_error_type, name, description, serverity_level, is_active, error_code)
+VALUES(9, 'Orphan Soggetti', 'Soggetti record orphaned due to Collegamenti parent deletion', 2, 1, 'ERR5');
+INSERT INTO ERROR_TYPE
+(pk_error_type, name, description, serverity_level, is_active, error_code)
+VALUES(10, 'Orphan Rapporti', 'Rapporti record orphaned due to Collegamenti parent deletion', 2, 1, 'ERR6');
 
 -- Add periods
 INSERT INTO PERIOD
