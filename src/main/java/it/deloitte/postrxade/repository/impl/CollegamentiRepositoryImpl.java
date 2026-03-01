@@ -7,6 +7,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -590,8 +591,7 @@ public class CollegamentiRepositoryImpl implements CollegamentiRepositoryCustom 
                     ON c.chiave_rapporto = r.chiave_rapporto 
                     AND c.fk_submission = r.fk_submission
                 WHERE c.fk_submission = :submissionId
-                  AND s.pk_soggetti IS NULL 
-                  AND r.pk_rapporti IS NULL
+                  AND (s.pk_soggetti IS NULL OR r.pk_rapporti IS NULL)
                 """;
 
         Query query = entityManager.createNativeQuery(nativeSql);
@@ -640,8 +640,7 @@ public class CollegamentiRepositoryImpl implements CollegamentiRepositoryCustom 
                     ON c.chiave_rapporto = r.chiave_rapporto 
                     AND c.fk_submission = r.fk_submission
                 WHERE s.fk_submission = :submissionId
-                  AND s2.pk_soggetti IS NULL 
-                  AND r.pk_rapporti IS NULL
+                  AND (s2.pk_soggetti IS NULL OR r.pk_rapporti IS NULL)
                 """;
 
         Query query = entityManager.createNativeQuery(nativeSql);
@@ -688,8 +687,7 @@ public class CollegamentiRepositoryImpl implements CollegamentiRepositoryCustom 
                     ON c.chiave_rapporto = r2.chiave_rapporto 
                     AND c.fk_submission = r2.fk_submission
                 WHERE r.fk_submission = :submissionId
-                  AND s.pk_soggetti IS NULL 
-                  AND r2.pk_rapporti IS NULL
+                  AND (s.pk_soggetti IS NULL OR r2.pk_rapporti IS NULL)
                 """;
 
         Query query = entityManager.createNativeQuery(nativeSql);
@@ -699,5 +697,27 @@ public class CollegamentiRepositoryImpl implements CollegamentiRepositoryCustom 
         List<Object[]> results = query.getResultList();
 
         return results;
+    }
+
+    @Override
+    @Transactional
+    public int bulkDeleteByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return 0;
+        }
+
+        String nativeSql = """
+                DELETE FROM MERCHANT_COLLEGAMENTI
+                WHERE pk_collegamenti IN (:ids)
+                """;
+
+        Query query = entityManager.createNativeQuery(nativeSql);
+        query.setParameter("ids", ids);
+
+        int deletedCount = query.executeUpdate();
+        entityManager.flush();
+        entityManager.clear();
+
+        return deletedCount;
     }
 }

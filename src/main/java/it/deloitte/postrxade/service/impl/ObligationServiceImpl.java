@@ -1336,34 +1336,39 @@ public class ObligationServiceImpl implements ObligationService {
     }
 
     /**
-     * Validates and cleans orphan Collegamenti records and their children.
+     * Validates and cleans orphan Collegamenti records and their children to ensure equal counts.
+     * 
+     * REQUIREMENT: count(Collegamenti) = count(Soggetti) = count(Rapporti)
      * 
      * Process:
-     * 1. Find Collegamenti missing BOTH Soggetti AND Rapporti → Delete + create error
-     * 2. Find Soggetti whose Collegamenti parent will be deleted → Delete + create error
-     * 3. Find Rapporti whose Collegamenti parent will be deleted → Delete + create error
+     * 1. Find Collegamenti missing Soggetti OR Rapporti (or both) → Mark for deletion
+     * 2. Find Soggetti whose Collegamenti parent will be deleted → Mark for deletion
+     * 3. Find Rapporti whose Collegamenti parent will be deleted → Mark for deletion
+     * 4. Create error records for all marked records
+     * 5. Delete in correct order: Soggetti → Rapporti → Collegamenti
      * 
-     * This ensures data integrity by removing Collegamenti with no children and cascading
-     * the deletion to any children that would become orphaned.
+     * This ensures that every Collegamenti has exactly ONE Soggetti AND ONE Rapporti,
+     * resulting in equal counts across all three tables.
      * 
      * @param submission The submission to validate
      * @param ingestion The ingestion to associate error records with
      * @return OrphanValidationResult containing counts of deleted records
      */
-    private OrphanValidationResult validateAndCleanOrphanCollegamenti(Submission submission, Ingestion ingestion) {
-        log.info("Starting orphan Collegamenti validation for submission: {}", submission.getId());
+    @Transactional
+    OrphanValidationResult validateAndCleanOrphanCollegamenti(Submission submission, Ingestion ingestion) {
+        log.info("Starting orphan Collegamenti validation for submission: {} (ensuring equal counts)", submission.getId());
         
         long startTime = System.currentTimeMillis();
         
-        // Step 1: Find Collegamenti missing BOTH children
+        // Step 1: Find Collegamenti missing Soggetti OR Rapporti (or both)
         List<Object[]> orphanCollegamenti = collegamentiRepository.findOrphanCollegamenti(submission.getId());
         
         if (orphanCollegamenti.isEmpty()) {
-            log.info("No orphan Collegamenti found for submission: {}", submission.getId());
+            log.info("No orphan Collegamenti found - all Collegamenti have both Soggetti and Rapporti children");
             return new OrphanValidationResult(0, 0, 0);
         }
         
-        log.warn("Found {} orphan Collegamenti records (missing BOTH Soggetti AND Rapporti) for submission: {}", 
+        log.warn("Found {} orphan Collegamenti records (missing Soggetti OR Rapporti or both) for submission: {}", 
                 orphanCollegamenti.size(), submission.getId());
         
         // Step 2: Find Soggetti that will become orphaned when Collegamenti is deleted
@@ -1387,26 +1392,48 @@ public class ObligationServiceImpl implements ObligationService {
         List<Long> soggettiIds = new ArrayList<>();
         List<Long> rapportiIds = new ArrayList<>();
         
-        // Step 4: Create error records for orphan Collegamenti
-        for (Object[] orphan : orphanCollegamenti) {
+        // Collect all error records (without saving to DB yet)
+        List<ErrorRecord> allErrorRecords = new ArrayList<>();
+        
+        // Step 4: Create error record objects for orphan Collegamenti
+        for (Object[]orphan : orphanCollegamenti) {
             Long collegamentiId = ((Number) orphan[0]).longValue();
             String ndg = (String) orphan[1];
             String chiaveRapporto = (String) orphan[2];
+            Integer hasSoggetti = ((Number) orphan[3]).intValue();
+            Integer hasRapporti = ((Number) orphan[4]).intValue();
             String rawRow = (String) orphan[5];
             
             collegamentiIds.add(collegamentiId);
             
-            String errorMessage = String.format(
-                "Collegamenti record (ID: %d, NDG: %s, chiave_rapporto: %s) is orphaned - missing both Soggetti and Rapporti children. " +
-                "This Collegamenti will be deleted to maintain data integrity.",
-                collegamentiId, ndg, chiaveRapporto
-            );
+            // Determine what's missing and create appropriate error message
+            String errorMessage;
+            if (hasSoggetti == 0 && hasRapporti == 0) {
+                errorMessage = String.format(
+                    "Collegamenti record (ID: %d, NDG: %s, chiave_rapporto: %s) is orphaned - missing both Soggetti and Rapporti children. " +
+                    "This Collegamenti will be deleted to ensure equal counts (Collegamenti = Soggetti = Rapporti).",
+                    collegamentiId, ndg, chiaveRapporto
+                );
+            } else if (hasSoggetti == 0) {
+                errorMessage = String.format(
+                    "Collegamenti record (ID: %d, NDG: %s, chiave_rapporto: %s) is missing Soggetti child. " +
+                    "This Collegamenti and its Rapporti child will be deleted to ensure equal counts (Collegamenti = Soggetti = Rapporti).",
+                    collegamentiId, ndg, chiaveRapporto
+                );
+            } else {
+                errorMessage = String.format(
+                    "Collegamenti record (ID: %d, NDG: %s, chiave_rapporto: %s) is missing Rapporti child. " +
+                    "This Collegamenti and its Soggetti child will be deleted to ensure equal counts (Collegamenti = Soggetti = Rapporti).",
+                    collegamentiId, ndg, chiaveRapporto
+                );
+            }
             
-            createErrorRecord(ingestion, submission, rawRow, orphanCollegamentiType, errorMessage);
-            log.debug("Created error record for orphan Collegamenti: {}", errorMessage);
+            ErrorRecord errorRecord = createErrorRecordObject(ingestion, submission, rawRow, orphanCollegamentiType, errorMessage);
+            allErrorRecords.add(errorRecord);
+            log.debug("Created error record object for orphan Collegamenti: {}", errorMessage);
         }
         
-        // Step 5: Create error records for Soggetti that will be orphaned
+        // Step 5: Create error record objects for Soggetti that will be orphaned
         for (Object[] soggetto : soggettiToOrphan) {
             Long soggettiId = ((Number) soggetto[0]).longValue();
             String ndg = (String) soggetto[1];
@@ -1420,11 +1447,12 @@ public class ObligationServiceImpl implements ObligationService {
                 soggettiId, ndg, ndg
             );
             
-            createErrorRecord(ingestion, submission, rawRow, orphanSoggettiType, errorMessage);
-            log.debug("Created error record for orphaned Soggetti: {}", errorMessage);
+            ErrorRecord errorRecord = createErrorRecordObject(ingestion, submission, rawRow, orphanSoggettiType, errorMessage);
+            allErrorRecords.add(errorRecord);
+            log.debug("Created error record object for orphaned Soggetti: {}", errorMessage);
         }
         
-        // Step 6: Create error records for Rapporti that will be orphaned
+        // Step 6: Create error record objects for Rapporti that will be orphaned
         for (Object[] rapporto : rapportiToOrphan) {
             Long rapportiId = ((Number) rapporto[0]).longValue();
             String chiaveRapporto = (String) rapporto[1];
@@ -1438,34 +1466,69 @@ public class ObligationServiceImpl implements ObligationService {
                 rapportiId, chiaveRapporto, chiaveRapporto
             );
             
-            createErrorRecord(ingestion, submission, rawRow, orphanRapportiType, errorMessage);
-            log.debug("Created error record for orphaned Rapporti: {}", errorMessage);
+            ErrorRecord errorRecord = createErrorRecordObject(ingestion, submission, rawRow, orphanRapportiType, errorMessage);
+            allErrorRecords.add(errorRecord);
+            log.debug("Created error record object for orphaned Rapporti: {}", errorMessage);
         }
         
-        // Step 7: Delete in correct order (children first, then parent)
+        // Step 7: Bulk insert all error records with their causes
+        if (!allErrorRecords.isEmpty()) {
+            log.info("Bulk inserting {} error records with causes", allErrorRecords.size());
+            errorRecordRepository.bulkInsertRecordsWithCauses(allErrorRecords, ingestion.getId());
+            log.info("Successfully bulk inserted {} error records", allErrorRecords.size());
+        }
+        
+        // Step 8: Delete in correct order (children first, then parent) using BULK operations
+        int soggettiDeletedCount = 0;
+        int rapportiDeletedCount = 0;
+        int collegamentiDeletedCount = 0;
+        
         if (!soggettiIds.isEmpty()) {
-            log.info("Deleting {} orphaned Soggetti records", soggettiIds.size());
-            soggettiRepository.deleteAllById(soggettiIds);
-            log.info("Successfully deleted {} Soggetti records", soggettiIds.size());
+            log.info("Bulk deleting {} orphaned Soggetti records", soggettiIds.size());
+            soggettiDeletedCount = soggettiRepository.bulkDeleteByIds(soggettiIds);
+            log.info("Successfully bulk deleted {} Soggetti records", soggettiDeletedCount);
         }
         
         if (!rapportiIds.isEmpty()) {
-            log.info("Deleting {} orphaned Rapporti records", rapportiIds.size());
-            rapportiRepository.deleteAllById(rapportiIds);
-            log.info("Successfully deleted {} Rapporti records", rapportiIds.size());
+            log.info("Bulk deleting {} orphaned Rapporti records", rapportiIds.size());
+            rapportiDeletedCount = rapportiRepository.bulkDeleteByIds(rapportiIds);
+            log.info("Successfully bulk deleted {} Rapporti records", rapportiDeletedCount);
         }
         
         if (!collegamentiIds.isEmpty()) {
-            log.info("Deleting {} orphan Collegamenti records", collegamentiIds.size());
-            collegamentiRepository.deleteAllById(collegamentiIds);
-            log.info("Successfully deleted {} Collegamenti records", collegamentiIds.size());
+            log.info("Bulk deleting {} orphan Collegamenti records", collegamentiIds.size());
+            collegamentiDeletedCount = collegamentiRepository.bulkDeleteByIds(collegamentiIds);
+            log.info("Successfully bulk deleted {} Collegamenti records", collegamentiDeletedCount);
         }
         
         long elapsedTime = System.currentTimeMillis() - startTime;
-        log.info("Orphan validation completed in {}ms - Deleted: {} Collegamenti, {} Soggetti, {} Rapporti",
-                elapsedTime, collegamentiIds.size(), soggettiIds.size(), rapportiIds.size());
+        log.info("Orphan validation completed in {}ms - Deleted: {} Collegamenti, {} Soggetti, {} Rapporti (using bulk operations)",
+                elapsedTime, collegamentiDeletedCount, soggettiDeletedCount, rapportiDeletedCount);
         
-        return new OrphanValidationResult(collegamentiIds.size(), soggettiIds.size(), rapportiIds.size());
+        return new OrphanValidationResult(collegamentiDeletedCount, soggettiDeletedCount, rapportiDeletedCount);
+    }
+    
+    /**
+     * Helper method to create error record object with error cause (without saving to DB).
+     * Used for bulk insertion.
+     */
+    private ErrorRecord createErrorRecordObject(Ingestion ingestion, Submission submission, String rawRow, 
+                                                ErrorType errorType, String errorMessage) {
+        ErrorRecord errorRecord = new ErrorRecord();
+        errorRecord.setIngestion(ingestion);
+        errorRecord.setSubmission(submission);
+        errorRecord.setRawRow(rawRow != null && rawRow.length() > 250 ? rawRow.substring(0, 250) : rawRow);
+        
+        ErrorCause errorCause = new ErrorCause();
+        errorCause.setErrorRecord(errorRecord);
+        errorCause.setErrorType(errorType);
+        errorCause.setErrorMessage(errorMessage);
+        errorCause.setSubmission(submission);
+        
+        // Set the error causes list on the error record
+        errorRecord.setErrorCauses(List.of(errorCause));
+        
+        return errorRecord;
     }
     
     /**

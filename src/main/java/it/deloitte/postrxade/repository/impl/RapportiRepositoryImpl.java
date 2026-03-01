@@ -1,13 +1,12 @@
 package it.deloitte.postrxade.repository.impl;
 
-import it.deloitte.postrxade.entity.Collegamenti;
 import it.deloitte.postrxade.entity.Rapporti;
-import it.deloitte.postrxade.entity.Soggetti;
 import it.deloitte.postrxade.entity.Submission;
 import it.deloitte.postrxade.repository.RapportiRepositoryCustom;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
@@ -100,5 +99,27 @@ public class RapportiRepositoryImpl implements RapportiRepositoryCustom {
                 .getResultList();
 
         return rapportiList;
+    }
+
+    @Override
+    @Transactional
+    public int bulkDeleteByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return 0;
+        }
+
+        String nativeSql = """
+                DELETE FROM MERCHANT_RAPPORTI
+                WHERE pk_rapporti IN (:ids)
+                """;
+
+        int deletedCount = entityManager.createNativeQuery(nativeSql)
+                .setParameter("ids", ids)
+                .executeUpdate();
+        
+        entityManager.flush();
+        entityManager.clear();
+
+        return deletedCount;
     }
 }

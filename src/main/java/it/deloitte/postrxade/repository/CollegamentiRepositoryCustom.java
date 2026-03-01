@@ -54,7 +54,8 @@ public interface CollegamentiRepositoryCustom {
     List<Object[]> findNdgAndChiaviByIds(List<Long> collegamentiIds);
 
     /**
-     * Find orphan Collegamenti records that don't have ANY children (missing BOTH Soggetti AND Rapporti).
+     * Find orphan Collegamenti records that are missing Soggetti OR Rapporti children (or both).
+     * These Collegamenti will be deleted along with any children they have.
      * Returns a list of Object[] where:
      * - [0] = pk_collegamenti (Long)
      * - [1] = ndg (String)
@@ -69,8 +70,8 @@ public interface CollegamentiRepositoryCustom {
     List<Object[]> findOrphanCollegamenti(Long submissionId);
 
     /**
-     * Find Soggetti records whose Collegamenti parent is missing BOTH children (will be deleted).
-     * These Soggetti will become orphans when their Collegamenti parent is deleted.
+     * Find Soggetti records whose Collegamenti parent is missing Soggetti OR Rapporti (will be deleted).
+     * These Soggetti will be deleted when their Collegamenti parent is deleted.
      * 
      * @param submissionId The submission ID to check
      * @return List of Object[] with [pk_soggetti, ndg, raw_row]
@@ -78,11 +79,19 @@ public interface CollegamentiRepositoryCustom {
     List<Object[]> findSoggettiToOrphan(Long submissionId);
 
     /**
-     * Find Rapporti records whose Collegamenti parent is missing BOTH children (will be deleted).
-     * These Rapporti will become orphans when their Collegamenti parent is deleted.
+     * Find Rapporti records whose Collegamenti parent is missing Soggetti OR Rapporti (will be deleted).
+     * These Rapporti will be deleted when their Collegamenti parent is deleted.
      * 
      * @param submissionId The submission ID to check
      * @return List of Object[] with [pk_rapporti, chiave_rapporto, raw_row]
      */
     List<Object[]> findRapportiToOrphan(Long submissionId);
+
+    /**
+     * Bulk delete Collegamenti by IDs using a single DELETE statement.
+     * 
+     * @param ids List of Collegamenti IDs to delete
+     * @return Number of records deleted
+     */
+    int bulkDeleteByIds(List<Long> ids);
 }
