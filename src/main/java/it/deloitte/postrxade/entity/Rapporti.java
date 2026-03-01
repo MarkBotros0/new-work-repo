@@ -75,6 +75,9 @@ public class Rapporti {
     @Column(name = "controllo_di_fine_riga", length = 1)
     String controlloDiFineRiga;
 
+    @Column(name = "ADE_RAPPORTO_IDENTIFIER", length = 50)
+    String adeRapportoIdentifier;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

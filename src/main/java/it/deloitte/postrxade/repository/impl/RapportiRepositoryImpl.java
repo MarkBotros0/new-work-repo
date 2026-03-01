@@ -122,4 +122,36 @@ public class RapportiRepositoryImpl implements RapportiRepositoryCustom {
 
         return deletedCount;
     }
+
+    @Override
+    @Transactional
+    public int bulkUpdateAdeRapportoIdentifier(Long submissionId) {
+        if (submissionId == null) {
+            return 0;
+        }
+
+        String nativeSql = """
+                UPDATE MERCHANT_RAPPORTI mr
+                INNER JOIN SUBMISSION s ON mr.fk_submission = s.pk_submission
+                INNER JOIN OBLIGATION o ON s.fk_obligation = o.pk_obligation
+                INNER JOIN PERIOD p ON o.fk_period = p.pk_period
+                SET mr.ADE_RAPPORTO_IDENTIFIER = CONCAT(
+                    o.fiscalYear,
+                    LPAD(p.`order`, 2, '0'),
+                    '_',
+                    mr.pk_rapporti
+                )
+                WHERE mr.fk_submission = :submissionId
+                AND (mr.ADE_RAPPORTO_IDENTIFIER IS NULL OR mr.ADE_RAPPORTO_IDENTIFIER = '')
+                """;
+
+        int updatedCount = entityManager.createNativeQuery(nativeSql)
+                .setParameter("submissionId", submissionId)
+                .executeUpdate();
+        
+        entityManager.flush();
+        entityManager.clear();
+
+        return updatedCount;
+    }
 }

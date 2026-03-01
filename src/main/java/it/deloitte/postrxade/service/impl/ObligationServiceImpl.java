@@ -676,6 +676,19 @@ public class ObligationServiceImpl implements ObligationService {
                 soggettiRepository.bulkInsert(batch.soggettiList(), submission);
             }, "soggetti");
         }
+        
+        if (!batch.rapportiList().isEmpty()) {
+            executeWithRetry(() -> {
+                rapportiRepository.bulkInsert(batch.rapportiList(), submission);
+            }, "rapporti");
+            
+            // Update ADE_RAPPORTO_IDENTIFIER for newly inserted rapporti
+            executeWithRetry(() -> {
+                int updated = rapportiRepository.bulkUpdateAdeRapportoIdentifier(submission.getId());
+                log.info("Updated {} ADE_RAPPORTO_IDENTIFIER values for rapporti", updated);
+            }, "rapporti identifier update");
+        }
+        
         if (!batch.errorRecords().isEmpty()) {
             executeWithRetry(() -> {
                 errorRecordRepository.bulkInsertRecordsWithCauses(batch.errorRecords(), ingestion.getId());

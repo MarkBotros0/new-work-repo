@@ -3,6 +3,7 @@ package it.deloitte.postrxade.repository.impl;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,6 +13,7 @@ import it.deloitte.postrxade.entity.DatiContabili;
 import it.deloitte.postrxade.entity.Rapporti;
 import it.deloitte.postrxade.entity.Soggetti;
 import it.deloitte.postrxade.records.StagingResult;
+import it.deloitte.postrxade.repository.RapportiRepository;
 import it.deloitte.postrxade.repository.StagingRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -27,6 +29,9 @@ public class StagingRepositoryImpl implements StagingRepository {
 
     @PersistenceContext
     private EntityManager entityManager;
+    
+    @Autowired
+    private RapportiRepository rapportiRepository;
 
     // Batch size for bulk inserts into staging
     private static final int STAGING_BATCH_SIZE = 5000;
@@ -607,6 +612,10 @@ public class StagingRepositoryImpl implements StagingRepository {
                 """)
                 .setParameter("submissionId", submissionId)
                 .executeUpdate();
+
+        // Step 5: Update ADE_RAPPORTO_IDENTIFIER for newly inserted records
+        int identifiersUpdated = rapportiRepository.bulkUpdateAdeRapportoIdentifier(submissionId);
+        log.info("Updated {} ADE_RAPPORTO_IDENTIFIER values", identifiersUpdated);
 
         long elapsed = System.currentTimeMillis() - startTime;
         log.info("Processed rapporti in {}ms: inserted={}, duplicates={}, missingParents={}", 

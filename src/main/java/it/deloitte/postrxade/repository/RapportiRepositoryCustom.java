@@ -18,4 +18,13 @@ public interface RapportiRepositoryCustom {
      * @return Number of records deleted
      */
     int bulkDeleteByIds(List<Long> ids);
+    
+    /**
+     * Bulk update ADE_RAPPORTO_IDENTIFIER for rapporti records by submission.
+     * Sets the identifier to format: YYYYMM_RAPPORTIID
+     * 
+     * @param submissionId Submission ID to update rapporti for
+     * @return Number of records updated
+     */
+    int bulkUpdateAdeRapportoIdentifier(Long submissionId);
 }

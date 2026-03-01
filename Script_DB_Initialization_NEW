@@ -379,6 +379,7 @@ CREATE TABLE `MERCHANT_RAPPORTI` (
     `flag_stato_rapporto` VARCHAR(1),
     `data_predisposizione` VARCHAR(8),
     `controllo_di_fine_riga` VARCHAR(1),
+    `ADE_RAPPORTO_IDENTIFIER` VARCHAR(50),
     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
     `fk_output` BIGINT NULL,
     UNIQUE KEY `unique_chiave_rapporto_submission` (`chiave_rapporto`, `fk_submission`),
@@ -631,3 +632,6 @@ CREATE TABLE STG_CAMBIO_NDG (
     CONSTRAINT fk_stg_cambio_ndg_ingestion FOREIGN KEY (fk_ingestion) REFERENCES INGESTION(pk_ingestion),
     CONSTRAINT fk_stg_cambio_ndg_submission FOREIGN KEY (fk_submission) REFERENCES SUBMISSION(pk_submission)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+ALTER TABLE `MERCHANT_RAPPORTI`
+ADD COLUMN IF NOT EXISTS `ADE_RAPPORTO_IDENTIFIER` VARCHAR(50) AFTER `controllo_di_fine_riga`;
