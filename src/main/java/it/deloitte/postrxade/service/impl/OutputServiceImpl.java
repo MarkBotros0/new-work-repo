@@ -255,34 +255,27 @@ public class OutputServiceImpl implements OutputService {
                 // 1. Header
                 zos.write(OutputFileFormatter.createHeader().getBytes(StandardCharsets.UTF_8));
 
-                // 2. Section 1: Collegamenti with Rapporti children (Type 1 records)
+                // 2. Generate lines for each collegamenti: rapporti line, then anagrafica line, then dati contabili
                 for (Collegamenti c : collegamentiList) {
-                    if (c.getRapporto() != null) {
-                        String line = OutputFileFormatter.toRapportiOutputString(c);
-                        zos.write(line.getBytes(StandardCharsets.UTF_8));
-                        section1Count++;
-                    }
-                }
+                    // Section 1: Rapporti line (Type 1 record)
+                    String rapportiLine = OutputFileFormatter.toRapportiOutputString(c);
+                    zos.write(rapportiLine.getBytes(StandardCharsets.UTF_8));
+                    section1Count++;
 
-                // 3. Section 2: Collegamenti with Rapporti and Soggetti children (Type 2 records)
-                for (Collegamenti c : collegamentiList) {
-                    if (c.getRapporto() != null && c.getSoggetto() != null) {
-                        String line = OutputFileFormatter.toCollegamentiOutputString(c, section2Count);
-                        zos.write(line.getBytes(StandardCharsets.UTF_8));
-                        section2Count++;
-                    }
-                }
+                    // Section 2: Anagrafica/Soggetti line (Type 2 record)
+                    String anagraficaLine = OutputFileFormatter.toAnagraficaOutputString(c, section2Count);
+                    zos.write(anagraficaLine.getBytes(StandardCharsets.UTF_8));
+                    section2Count++;
 
-                // 4. Section 3: Collegamenti with DatiContabili children (Type 3 records)
-//                for (Collegamenti c : collegamentiList) {
+                    // Section 3: DatiContabili line (Type 3 record) - currently commented out
 //                    if (c.getDatiContabili() != null) {
-//                        String line = OutputFileFormatter.toCollegamentiOutputString2(c);
-//                        zos.write(line.getBytes(StandardCharsets.UTF_8));
+//                        String datiContabiliLine = OutputFileFormatter.toSaldiEMovementiOutputString(c);
+//                        zos.write(datiContabiliLine.getBytes(StandardCharsets.UTF_8));
 //                        section3Count++;
 //                    }
-//                }
+                }
 
-                // 5. Footer with counts for the 3 sections
+                // 3. Footer with counts for the 3 sections
                 String footer = OutputFileFormatter.createFooter(section1Count, section2Count, section3Count);
                 zos.write(footer.getBytes(StandardCharsets.UTF_8));
 

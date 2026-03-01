@@ -506,7 +506,7 @@ public final class OutputFileFormatter {
      * Section 2 (Type 2): Collegamenti + Rapporti + Soggetti
      * Format: 398 characters + end-of-line
      */
-    public static String toCollegamentiOutputString(Collegamenti collegamenti, int count) {
+    public static String toAnagraficaOutputString(Collegamenti collegamenti, int count) {
         StringBuilder sb = new StringBuilder(398);
 
         Rapporti rapporto = collegamenti.getRapporto();
@@ -676,7 +676,7 @@ public final class OutputFileFormatter {
      * Section 3 (Type 3): Collegamenti + Rapporti + DatiContabili
      * Format: 398 characters + end-of-line
      */
-    public static String toCollegamentiOutputString2(Collegamenti collegamenti) {
+    public static String toSaldiEMovementiOutputString(Collegamenti collegamenti) {
         StringBuilder sb = new StringBuilder(398);
 
         Rapporti rapporto = collegamenti.getRapporto();
