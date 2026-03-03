@@ -1066,6 +1066,135 @@ public class StagingRepositoryImpl implements StagingRepository {
         return results != null ? results : new ArrayList<>();
     }
 
+    @Override
+    @Transactional
+    public int validateOrphanCollegamentiInStaging(Long submissionId) {
+        log.info("Validating orphan Collegamenti in staging for submission: {}", submissionId);
+        
+        // Mark Collegamenti that are missing Soggetti OR Rapporti children (or both)
+        // This mirrors the logic from findOrphanCollegamenti but operates on staging tables
+        int orphanCount = entityManager.createNativeQuery("""
+                UPDATE STG_COLLEGAMENTI stg
+                LEFT JOIN STG_SOGGETTI s 
+                    ON stg.ndg COLLATE utf8mb4_0900_ai_ci = s.ndg COLLATE utf8mb4_0900_ai_ci
+                    AND stg.fk_submission = s.fk_submission
+                    AND (s.process_status IS NULL OR s.process_status = 1)
+                LEFT JOIN STG_RAPPORTI r 
+                    ON stg.chiave_rapporto COLLATE utf8mb4_0900_ai_ci = r.chiave_rapporto COLLATE utf8mb4_0900_ai_ci
+                    AND stg.fk_submission = r.fk_submission
+                    AND (r.process_status IS NULL OR r.process_status = 1)
+                SET stg.process_status = 4,
+                    stg.error_message = CASE
+                        WHEN s.pk_stg_merchant IS NULL AND r.pk_stg_rapporti IS NULL 
+                            THEN CONCAT('Orphan Collegamenti: missing both Soggetti and Rapporti children (ndg: ', stg.ndg, ', chiave_rapporto: ', stg.chiave_rapporto, ')')
+                        WHEN s.pk_stg_merchant IS NULL 
+                            THEN CONCAT('Orphan Collegamenti: missing Soggetti child (ndg: ', stg.ndg, ')')
+                        ELSE CONCAT('Orphan Collegamenti: missing Rapporti child (chiave_rapporto: ', stg.chiave_rapporto, ')')
+                    END
+                WHERE stg.fk_submission = :submissionId
+                  AND (stg.process_status IS NULL OR stg.process_status = 1)
+                  AND (s.pk_stg_merchant IS NULL OR r.pk_stg_rapporti IS NULL)
+                """)
+                .setParameter("submissionId", submissionId)
+                .executeUpdate();
+        
+        log.info("Marked {} orphan Collegamenti in staging", orphanCount);
+        return orphanCount;
+    }
+
+    @Override
+    @Transactional
+    public int validateOrphanSoggettiInStaging(Long submissionId) {
+        log.info("Validating orphan Soggetti in staging for submission: {}", submissionId);
+        
+        // Mark Soggetti whose Collegamenti parent is orphaned (will not be inserted)
+        int orphanCount = entityManager.createNativeQuery("""
+                UPDATE STG_SOGGETTI s
+                INNER JOIN STG_COLLEGAMENTI c 
+                    ON s.ndg COLLATE utf8mb4_0900_ai_ci = c.ndg COLLATE utf8mb4_0900_ai_ci
+                    AND s.fk_submission = c.fk_submission
+                SET s.process_status = 4,
+                    s.error_message = CONCAT('Orphan Soggetti: Collegamenti parent is orphaned (ndg: ', s.ndg, ')')
+                WHERE s.fk_submission = :submissionId
+                  AND (s.process_status IS NULL OR s.process_status = 1)
+                  AND c.process_status = 4
+                """)
+                .setParameter("submissionId", submissionId)
+                .executeUpdate();
+        
+        log.info("Marked {} orphan Soggetti in staging", orphanCount);
+        return orphanCount;
+    }
+
+    @Override
+    @Transactional
+    public int validateOrphanRapportiInStaging(Long submissionId) {
+        log.info("Validating orphan Rapporti in staging for submission: {}", submissionId);
+        
+        // Mark Rapporti whose Collegamenti parent is orphaned (will not be inserted)
+        int orphanCount = entityManager.createNativeQuery("""
+                UPDATE STG_RAPPORTI r
+                INNER JOIN STG_COLLEGAMENTI c 
+                    ON r.chiave_rapporto COLLATE utf8mb4_0900_ai_ci = c.chiave_rapporto COLLATE utf8mb4_0900_ai_ci
+                    AND r.fk_submission = c.fk_submission
+                SET r.process_status = 4,
+                    r.error_message = CONCAT('Orphan Rapporti: Collegamenti parent is orphaned (chiave_rapporto: ', r.chiave_rapporto, ')')
+                WHERE r.fk_submission = :submissionId
+                  AND (r.process_status IS NULL OR r.process_status = 1)
+                  AND c.process_status = 4
+                """)
+                .setParameter("submissionId", submissionId)
+                .executeUpdate();
+        
+        log.info("Marked {} orphan Rapporti in staging", orphanCount);
+        return orphanCount;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Object[]> getOrphanCollegamentiDetails(Long submissionId) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> results = entityManager.createNativeQuery("""
+                SELECT raw_row, error_message
+                FROM STG_COLLEGAMENTI
+                WHERE fk_submission = :submissionId
+                  AND process_status = 4
+                """)
+                .setParameter("submissionId", submissionId)
+                .getResultList();
+        return results != null ? results : new ArrayList<>();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Object[]> getOrphanSoggettiDetails(Long submissionId) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> results = entityManager.createNativeQuery("""
+                SELECT raw_row, error_message
+                FROM STG_SOGGETTI
+                WHERE fk_submission = :submissionId
+                  AND process_status = 4
+                """)
+                .setParameter("submissionId", submissionId)
+                .getResultList();
+        return results != null ? results : new ArrayList<>();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Object[]> getOrphanRapportiDetails(Long submissionId) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> results = entityManager.createNativeQuery("""
+                SELECT raw_row, error_message
+                FROM STG_RAPPORTI
+                WHERE fk_submission = :submissionId
+                  AND process_status = 4
+                """)
+                .setParameter("submissionId", submissionId)
+                .getResultList();
+        return results != null ? results : new ArrayList<>();
+    }
+
     private String escape(String s) {
         if (s == null) return "";
         return s.replace("'", "''").replace("\\", "\\\\");

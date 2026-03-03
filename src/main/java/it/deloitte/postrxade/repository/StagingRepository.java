@@ -254,4 +254,61 @@ public interface StagingRepository {
 //     * @return list of Object[] with [raw_row, error_message]
 //     */
 //    List<Object[]> getMissingMerchantTransactionDetails(Long submissionId);
+
+    /**
+     * Validate and mark orphan Collegamenti in staging (missing Soggetti OR Rapporti children).
+     * Marks records with process_status = 4 (orphan).
+     * Returns count of orphan Collegamenti found.
+     *
+     * @param submissionId the submission ID
+     * @return count of orphan Collegamenti marked
+     */
+    int validateOrphanCollegamentiInStaging(Long submissionId);
+
+    /**
+     * Validate and mark orphan Soggetti in staging (whose Collegamenti parent will be orphaned).
+     * Marks records with process_status = 4 (orphan).
+     * Returns count of orphan Soggetti found.
+     *
+     * @param submissionId the submission ID
+     * @return count of orphan Soggetti marked
+     */
+    int validateOrphanSoggettiInStaging(Long submissionId);
+
+    /**
+     * Validate and mark orphan Rapporti in staging (whose Collegamenti parent will be orphaned).
+     * Marks records with process_status = 4 (orphan).
+     * Returns count of orphan Rapporti found.
+     *
+     * @param submissionId the submission ID
+     * @return count of orphan Rapporti marked
+     */
+    int validateOrphanRapportiInStaging(Long submissionId);
+
+    /**
+     * Get detailed info for orphan Collegamenti in staging (for ErrorRecord creation).
+     * Returns: raw_row, error_message
+     *
+     * @param submissionId the submission ID
+     * @return list of Object[] with [raw_row, error_message]
+     */
+    List<Object[]> getOrphanCollegamentiDetails(Long submissionId);
+
+    /**
+     * Get detailed info for orphan Soggetti in staging (for ErrorRecord creation).
+     * Returns: raw_row, error_message
+     *
+     * @param submissionId the submission ID
+     * @return list of Object[] with [raw_row, error_message]
+     */
+    List<Object[]> getOrphanSoggettiDetails(Long submissionId);
+
+    /**
+     * Get detailed info for orphan Rapporti in staging (for ErrorRecord creation).
+     * Returns: raw_row, error_message
+     *
+     * @param submissionId the submission ID
+     * @return list of Object[] with [raw_row, error_message]
+     */
+    List<Object[]> getOrphanRapportiDetails(Long submissionId);
 }

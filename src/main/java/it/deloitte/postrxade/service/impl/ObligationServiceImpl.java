@@ -137,6 +137,9 @@ public class ObligationServiceImpl implements ObligationService {
     @Autowired
     private StagingIngestionService stagingIngestionService;
 
+    @Autowired
+    private StagingRepository stagingRepository;
+
     @Value("${aws.s3.input-folder}")
     private String inputFolder;
 
@@ -899,118 +902,157 @@ public class ObligationServiceImpl implements ObligationService {
 
         long totalStartTime = System.currentTimeMillis();
 
+        // =============================================================================
+        // NEW APPROACH: Load all files to staging FIRST, then validate, then process
+        // This ensures main tables NEVER have orphans (not even temporarily)
+        // =============================================================================
 
-        // Phase 1: Process Collegamenti files (PARENT ENTITY - MUST BE FIRST!)
-        log.info("=== STAGING Phase 1: Processing {} collegamenti file(s) (PARENT) ===", collegamentiFiles.size());
+        // Phase 1: Load Collegamenti files to STAGING ONLY (don't process to main yet)
+        log.info("=== STAGING Phase 1: Loading {} collegamenti file(s) to STAGING ONLY ===", collegamentiFiles.size());
         IngestionType collegamentiType = ingestionTypeRepository.findByNameIgnoreCase("Collegamenti")
                 .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'collegamenti' is not found"));
 
-        int totalCollegamentiInserted = 0;
-        int totalCollegamentiDuplicate = 0;
+        int totalCollegamentiParsed = 0;
+        int totalCollegamentiValidationErrors = 0;
 
         for (String keyName : collegamentiFiles) {
             String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
             try (InputStream inputStream = s3Service.downloadFileAsStreamTest("COLLEGAMENTI.txt")) {
-//            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
                 RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
 
-                log.info("Processing collegamenti file: {}", fileName);
+                log.info("Loading collegamenti file to staging: {}", fileName);
                 ingestionRef.set(this.ingestionService.createIngestionBySubmission(submission, collegamentiType));
 
                 long fileStartTime = System.currentTimeMillis();
-                StagingResult result = stagingIngestionService.processCollegamentiFile(remoteFile, ingestionRef.get(), submission);
+                StagingResult result = stagingIngestionService.loadCollegamentiToStagingOnly(remoteFile, ingestionRef.get(), submission);
                 long fileElapsed = System.currentTimeMillis() - fileStartTime;
 
-                totalCollegamentiInserted += result.insertedCount();
-                totalCollegamentiDuplicate += result.duplicateCount();
+                totalCollegamentiParsed += result.insertedCount();
+                totalCollegamentiValidationErrors += result.errorCount();
 
-                log.info("Completed collegamenti file {} in {}ms: inserted={}, duplicates={}",
-                        fileName, fileElapsed, result.insertedCount(), result.duplicateCount());
+                log.info("Loaded collegamenti file {} to staging in {}ms: parsed={}, validationErrors={}",
+                        fileName, fileElapsed, result.insertedCount(), result.errorCount());
 
                 ingestionService.markAsSuccess(ingestionRef.get());
-//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
-
-                stagingIngestionService.cleanupStaging(submission.getId());
             }
         }
 
-        log.info("=== STAGING Phase 1 Complete: {} collegamenti inserted, {} duplicates ===",
-                totalCollegamentiInserted, totalCollegamentiDuplicate);
+        log.info("=== STAGING Phase 1 Complete: {} collegamenti loaded to staging, {} validation errors ===",
+                totalCollegamentiParsed, totalCollegamentiValidationErrors);
 
 
-        // Phase 2: Process Soggetti files (CHILD - requires Collegamenti.ndg)
-        log.info("=== STAGING Phase 2: Processing {} soggetti file(s) (CHILD) ===", soggettiFiles.size());
+        // Phase 2: Load Soggetti files to STAGING ONLY (don't process to main yet)
+        log.info("=== STAGING Phase 2: Loading {} soggetti file(s) to STAGING ONLY ===", soggettiFiles.size());
         IngestionType soggettiType = ingestionTypeRepository.findByNameIgnoreCase("soggetti")
                 .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'soggetti' is not found"));
 
-        int totalSoggettiInserted = 0;
-        int totalSoggettiDuplicate = 0;
+        int totalSoggettiParsed = 0;
+        int totalSoggettiValidationErrors = 0;
 
         for (String keyName : soggettiFiles) {
             String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
             try (InputStream inputStream = s3Service.downloadFileAsStreamTest("SOGGETTI.txt")) {
-//            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
                 RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
 
-                log.info("Processing soggetti file: {}", fileName);
+                log.info("Loading soggetti file to staging: {}", fileName);
                 ingestionRef.set(this.ingestionService.createIngestionBySubmission(submission, soggettiType));
 
                 long fileStartTime = System.currentTimeMillis();
-                StagingResult result = stagingIngestionService.processSoggettiFile(remoteFile, ingestionRef.get(), submission);
+                StagingResult result = stagingIngestionService.loadSoggettiToStagingOnly(remoteFile, ingestionRef.get(), submission);
                 long fileElapsed = System.currentTimeMillis() - fileStartTime;
 
-                totalSoggettiInserted += result.insertedCount();
-                totalSoggettiDuplicate += result.duplicateCount();
+                totalSoggettiParsed += result.insertedCount();
+                totalSoggettiValidationErrors += result.errorCount();
 
-                log.info("Completed soggetti file {} in {}ms: inserted={}, duplicates={}",
-                        fileName, fileElapsed, result.insertedCount(), result.duplicateCount());
+                log.info("Loaded soggetti file {} to staging in {}ms: parsed={}, validationErrors={}",
+                        fileName, fileElapsed, result.insertedCount(), result.errorCount());
 
                 ingestionService.markAsSuccess(ingestionRef.get());
-//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
-
-                stagingIngestionService.cleanupStaging(submission.getId());
             }
         }
 
-        log.info("=== STAGING Phase 2 Complete: {} soggetti inserted, {} duplicates ===",
-                totalSoggettiInserted, totalSoggettiDuplicate);
+        log.info("=== STAGING Phase 2 Complete: {} soggetti loaded to staging, {} validation errors ===",
+                totalSoggettiParsed, totalSoggettiValidationErrors);
 
-        // Phase 3: Process Rapporti files (CHILD - requires Collegamenti.chiave_rapporto)
-        log.info("=== STAGING Phase 3: Processing {} rapporti file(s) (CHILD) ===", rapportiFiles.size());
+        // Phase 3: Load Rapporti files to STAGING ONLY (don't process to main yet)
+        log.info("=== STAGING Phase 3: Loading {} rapporti file(s) to STAGING ONLY ===", rapportiFiles.size());
         IngestionType rapportiType = ingestionTypeRepository.findByNameIgnoreCase("rapporti")
                 .orElseThrow(() -> new NotFoundRecordException("Ingestion type 'rapporti' is not found"));
 
-        int totalRapportiInserted = 0;
-        int totalRapportiDuplicate = 0;
+        int totalRapportiParsed = 0;
+        int totalRapportiValidationErrors = 0;
 
         for (String keyName : rapportiFiles) {
             String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
             try (InputStream inputStream = s3Service.downloadFileAsStreamTest("RAPPORTI.txt")) {
-//            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
                 RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
 
-                log.info("Processing rapporti file: {}", fileName);
+                log.info("Loading rapporti file to staging: {}", fileName);
                 ingestionRef.set(this.ingestionService.createIngestionBySubmission(submission, rapportiType));
 
                 long fileStartTime = System.currentTimeMillis();
-                StagingResult result = stagingIngestionService.processRapportiFile(remoteFile, ingestionRef.get(), submission);
+                StagingResult result = stagingIngestionService.loadRapportiToStagingOnly(remoteFile, ingestionRef.get(), submission);
                 long fileElapsed = System.currentTimeMillis() - fileStartTime;
 
-                totalRapportiInserted += result.insertedCount();
-                totalRapportiDuplicate += result.duplicateCount();
+                totalRapportiParsed += result.insertedCount();
+                totalRapportiValidationErrors += result.errorCount();
 
-                log.info("Completed rapporti file {} in {}ms: inserted={}, duplicates={}",
-                        fileName, fileElapsed, result.insertedCount(), result.duplicateCount());
+                log.info("Loaded rapporti file {} to staging in {}ms: parsed={}, validationErrors={}",
+                        fileName, fileElapsed, result.insertedCount(), result.errorCount());
 
                 ingestionService.markAsSuccess(ingestionRef.get());
-//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
-
-                stagingIngestionService.cleanupStaging(submission.getId());
             }
         }
 
-        log.info("=== STAGING Phase 3 Complete: {} rapporti inserted, {} duplicates ===",
-                totalRapportiInserted, totalRapportiDuplicate);
+        log.info("=== STAGING Phase 3 Complete: {} rapporti loaded to staging, {} validation errors ===",
+                totalRapportiParsed, totalRapportiValidationErrors);
+
+        // =====================================================
+        // ORPHAN VALIDATION PHASE (ON STAGING - BEFORE MAIN TABLES)
+        // This is the KEY change: validate BEFORE data reaches main tables
+        // =====================================================
+        log.info("=== STAGING Orphan Validation: Checking Collegamenti integrity in STAGING (BEFORE main tables) ===");
+        OrphanValidationResult stagingOrphanResult = validateAndMarkOrphansInStaging(submission, ingestionRef.get());
+        log.info("=== STAGING Orphan Validation Complete: {} total records marked as orphans (Collegamenti: {}, Soggetti: {}, Rapporti: {}) ===",
+                stagingOrphanResult.totalDeleted(), stagingOrphanResult.collegamentiDeleted(), 
+                stagingOrphanResult.soggettiDeleted(), stagingOrphanResult.rapportiDeleted());
+
+        // =====================================================
+        // PROCESS FROM STAGING TO MAIN TABLES (SKIPPING ORPHANS)
+        // Now move clean data from staging to main tables
+        // Orphan records (process_status = 4) are automatically skipped
+        // =====================================================
+        log.info("=== Processing from STAGING to MAIN tables (orphans will be skipped) ===");
+
+        // Process Collegamenti
+        log.info("Processing Collegamenti from staging to main...");
+        StagingResult collegamentiResult = stagingRepository.processCollegamentiFromStaging(submission.getId());
+        int totalCollegamentiInserted = collegamentiResult.insertedCount();
+        int totalCollegamentiDuplicate = collegamentiResult.duplicateCount();
+        log.info("Collegamenti processed: inserted={}, duplicates={}", 
+                collegamentiResult.insertedCount(), collegamentiResult.duplicateCount());
+
+        // Process Soggetti
+        log.info("Processing Soggetti from staging to main...");
+        StagingResult soggettiResult = stagingRepository.processSoggettiFromStaging(submission.getId());
+        int totalSoggettiInserted = soggettiResult.insertedCount();
+        int totalSoggettiDuplicate = soggettiResult.duplicateCount();
+        log.info("Soggetti processed: inserted={}, duplicates={}, missingParents={}", 
+                soggettiResult.insertedCount(), soggettiResult.duplicateCount(), soggettiResult.missingMerchantCount());
+
+        // Process Rapporti
+        log.info("Processing Rapporti from staging to main...");
+        StagingResult rapportiResult = stagingRepository.processRapportiFromStaging(submission.getId());
+        int totalRapportiInserted = rapportiResult.insertedCount();
+        int totalRapportiDuplicate = rapportiResult.duplicateCount();
+        log.info("Rapporti processed: inserted={}, duplicates={}, missingParents={}", 
+                rapportiResult.insertedCount(), rapportiResult.duplicateCount(), rapportiResult.missingMerchantCount());
+
+        log.info("=== Processing Complete: Collegamenti={} inserted, Soggetti={} inserted, Rapporti={} inserted ===",
+                collegamentiResult.insertedCount(), soggettiResult.insertedCount(), rapportiResult.insertedCount());
+
+        // Create error records for duplicates and missing parents from staging
+        createErrorRecordsFromStaging(ingestionRef.get(), submission, collegamentiResult, soggettiResult, rapportiResult);
 
         // Phase 4: Process Dati Contabili files (CHILD - requires Collegamenti.chiave_rapporto)
         log.info("=== STAGING Phase 4: Processing {} daticontabili file(s) (CHILD) ===", daticontabiliFiles.size());
@@ -1023,7 +1065,6 @@ public class ObligationServiceImpl implements ObligationService {
         for (String keyName : daticontabiliFiles) {
             String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
             try (InputStream inputStream = s3Service.downloadFileAsStreamTest(keyName)) {
-//            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
                 RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
 
                 log.info("Processing daticontabili file: {}", fileName);
@@ -1040,9 +1081,6 @@ public class ObligationServiceImpl implements ObligationService {
                         fileName, fileElapsed, result.insertedCount(), result.duplicateCount());
 
                 ingestionService.markAsSuccess(ingestionRef.get());
-//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
-
-                stagingIngestionService.cleanupStaging(submission.getId());
             }
         }
 
@@ -1061,7 +1099,6 @@ public class ObligationServiceImpl implements ObligationService {
         for (String keyName : cambiondgFiles) {
             String fileName = keyName.substring(keyName.lastIndexOf('/') + 1);
             try (InputStream inputStream = s3Service.downloadFileAsStreamTest("CAMBIO_NDG.txt")) {
-//            try (InputStream inputStream = s3Service.downloadFileAsStream(keyName)) {
                 RemoteFile remoteFile = new RemoteFile(fileName, inputStream);
 
                 log.info("Processing cambiondg file: {}", fileName);
@@ -1078,35 +1115,37 @@ public class ObligationServiceImpl implements ObligationService {
                         fileName, fileElapsed, result.insertedCount(), result.duplicateCount());
 
                 ingestionService.markAsSuccess(ingestionRef.get());
-//                s3Service.moveFileFromInputToInputLoaded(remoteFile.name());
-
-                stagingIngestionService.cleanupStaging(submission.getId());
             }
         }
 
         log.info("=== STAGING Phase 5 Complete: {} cambiondg inserted, {} duplicates ===",
                 totalCambioNdgInserted, totalCambioNdgDuplicate);
 
-        stagingIngestionService.cleanupStaging(submission.getId());
+        // =====================================================
+        // LEGACY ORPHAN VALIDATION (SAFETY NET - SHOULD FIND ZERO)
+        // This verifies that staging validation worked correctly
+        // =====================================================
+        log.info("=== LEGACY Orphan Validation: Checking Collegamenti integrity in MAIN tables (safety net) ===");
+        OrphanValidationResult mainOrphanResult = validateAndCleanOrphanCollegamenti(submission, ingestionRef.get());
+        if (mainOrphanResult.totalDeleted() > 0) {
+            log.warn("=== WARNING: Legacy orphan validation found {} orphans in MAIN tables - staging validation may have missed these ===",
+                    mainOrphanResult.totalDeleted());
+        } else {
+            log.info("=== LEGACY Orphan Validation Complete: 0 orphans found (as expected - staging validation worked!) ===");
+        }
 
-        // =====================================================
-        // ORPHAN VALIDATION PHASE
-        // Validate Collegamenti have corresponding Soggetti and Rapporti children
-        // Delete orphans and cascade delete to orphaned children
-        // =====================================================
-        log.info("=== STAGING Orphan Validation: Checking Collegamenti integrity ===");
-        OrphanValidationResult orphanResult = validateAndCleanOrphanCollegamenti(submission, ingestionRef.get());
-        log.info("=== STAGING Orphan Validation Complete: {} total records deleted (Collegamenti: {}, Soggetti: {}, Rapporti: {}) ===",
-                orphanResult.totalDeleted(), orphanResult.collegamentiDeleted(), orphanResult.soggettiDeleted(), orphanResult.rapportiDeleted());
+        // Now clean staging after all validation is complete
+        stagingIngestionService.cleanupStaging(submission.getId());
 
         long totalElapsed = System.currentTimeMillis() - totalStartTime;
         log.info("=== STAGING INGESTION COMPLETE in {}ms ({} seconds) ===", totalElapsed, totalElapsed / 1000);
-        log.info("Summary: collegamenti={}/{} inserted/dup, soggetti={}/{} inserted/dup, rapporti={}/{} inserted/dup, daticontabili={}/{} inserted/dup, cambiondg={}/{} inserted/dup",
+        log.info("Summary: collegamenti={}/{} inserted/dup, soggetti={}/{} inserted/dup, rapporti={}/{} inserted/dup, daticontabili={}/{} inserted/dup, cambiondg={}/{} inserted/dup, orphans_prevented={}",
                 totalCollegamentiInserted, totalCollegamentiDuplicate,
                 totalSoggettiInserted, totalSoggettiDuplicate,
                 totalRapportiInserted, totalRapportiDuplicate,
                 totalDatiContabiliInserted, totalDatiContabiliDuplicate,
-                totalCambioNdgInserted, totalCambioNdgDuplicate);
+                totalCambioNdgInserted, totalCambioNdgDuplicate,
+                stagingOrphanResult.totalDeleted());
     }
 
     /**
@@ -1519,6 +1558,179 @@ public class ObligationServiceImpl implements ObligationService {
                 elapsedTime, collegamentiDeletedCount, soggettiDeletedCount, rapportiDeletedCount);
         
         return new OrphanValidationResult(collegamentiDeletedCount, soggettiDeletedCount, rapportiDeletedCount);
+    }
+    
+    /**
+     * Validate and mark orphan records in STAGING tables (before moving to main tables).
+     * This ensures main tables never have inconsistent data.
+     * 
+     * Process:
+     * 1. Mark Collegamenti in staging that are missing Soggetti OR Rapporti children
+     * 2. Mark Soggetti in staging whose Collegamenti parent is orphaned
+     * 3. Mark Rapporti in staging whose Collegamenti parent is orphaned
+     * 4. Create error records for all orphaned staging records
+     * 
+     * Marked records (process_status = 4) will be skipped during processing from staging to main.
+     */
+    @Transactional
+    OrphanValidationResult validateAndMarkOrphansInStaging(Submission submission, Ingestion ingestion) {
+        log.info("Starting orphan validation in STAGING for submission: {} (ensuring equal counts)", submission.getId());
+        
+        long startTime = System.currentTimeMillis();
+        
+        // Step 1: Mark orphan Collegamenti in staging (missing Soggetti OR Rapporti children)
+        int orphanCollegamentiCount = stagingRepository.validateOrphanCollegamentiInStaging(submission.getId());
+        log.info("Marked {} orphan Collegamenti in staging", orphanCollegamentiCount);
+        
+        // Step 2: Mark orphan Soggetti in staging (whose Collegamenti parent is orphaned)
+        int orphanSoggettiCount = stagingRepository.validateOrphanSoggettiInStaging(submission.getId());
+        log.info("Marked {} orphan Soggetti in staging", orphanSoggettiCount);
+        
+        // Step 3: Mark orphan Rapporti in staging (whose Collegamenti parent is orphaned)
+        int orphanRapportiCount = stagingRepository.validateOrphanRapportiInStaging(submission.getId());
+        log.info("Marked {} orphan Rapporti in staging", orphanRapportiCount);
+        
+        // Step 4: Create error records for all orphaned staging records
+        List<ErrorRecord> allErrorRecords = new ArrayList<>();
+        
+        // Get error types
+        ErrorType orphanCollegamentiType = errorTypeRepository.findByErrorCode(ErrorTypeCode.ORPHAN_COLLEGAMENTI.getErrorCode())
+                .orElseThrow(() -> new RuntimeException("Error type ORPHAN_COLLEGAMENTI not found in database"));
+        ErrorType orphanSoggettiType = errorTypeRepository.findByErrorCode(ErrorTypeCode.ORPHAN_SOGGETTI.getErrorCode())
+                .orElseThrow(() -> new RuntimeException("Error type ORPHAN_SOGGETTI not found in database"));
+        ErrorType orphanRapportiType = errorTypeRepository.findByErrorCode(ErrorTypeCode.ORPHAN_RAPPORTI.getErrorCode())
+                .orElseThrow(() -> new RuntimeException("Error type ORPHAN_RAPPORTI not found in database"));
+        
+        // Create error records for orphan Collegamenti
+        if (orphanCollegamentiCount > 0) {
+            List<Object[]> orphanCollegamenti = stagingRepository.getOrphanCollegamentiDetails(submission.getId());
+            for (Object[] orphan : orphanCollegamenti) {
+                String rawRow = (String) orphan[0];
+                String errorMessage = (String) orphan[1];
+                ErrorRecord errorRecord = createErrorRecordObject(ingestion, submission, rawRow, orphanCollegamentiType, errorMessage);
+                allErrorRecords.add(errorRecord);
+            }
+            log.info("Created {} error records for orphan Collegamenti", orphanCollegamenti.size());
+        }
+        
+        // Create error records for orphan Soggetti
+        if (orphanSoggettiCount > 0) {
+            List<Object[]> orphanSoggetti = stagingRepository.getOrphanSoggettiDetails(submission.getId());
+            for (Object[] orphan : orphanSoggetti) {
+                String rawRow = (String) orphan[0];
+                String errorMessage = (String) orphan[1];
+                ErrorRecord errorRecord = createErrorRecordObject(ingestion, submission, rawRow, orphanSoggettiType, errorMessage);
+                allErrorRecords.add(errorRecord);
+            }
+            log.info("Created {} error records for orphan Soggetti", orphanSoggetti.size());
+        }
+        
+        // Create error records for orphan Rapporti
+        if (orphanRapportiCount > 0) {
+            List<Object[]> orphanRapporti = stagingRepository.getOrphanRapportiDetails(submission.getId());
+            for (Object[] orphan : orphanRapporti) {
+                String rawRow = (String) orphan[0];
+                String errorMessage = (String) orphan[1];
+                ErrorRecord errorRecord = createErrorRecordObject(ingestion, submission, rawRow, orphanRapportiType, errorMessage);
+                allErrorRecords.add(errorRecord);
+            }
+            log.info("Created {} error records for orphan Rapporti", orphanRapporti.size());
+        }
+        
+        // Bulk insert all error records
+        if (!allErrorRecords.isEmpty()) {
+            log.info("Bulk inserting {} error records for orphaned staging records", allErrorRecords.size());
+            errorRecordRepository.bulkInsertRecordsWithCauses(allErrorRecords, ingestion.getId());
+            log.info("Successfully bulk inserted {} error records", allErrorRecords.size());
+        }
+        
+        long elapsedTime = System.currentTimeMillis() - startTime;
+        log.info("Staging orphan validation completed in {}ms - Marked: {} Collegamenti, {} Soggetti, {} Rapporti",
+                elapsedTime, orphanCollegamentiCount, orphanSoggettiCount, orphanRapportiCount);
+        
+        return new OrphanValidationResult(orphanCollegamentiCount, orphanSoggettiCount, orphanRapportiCount);
+    }
+
+    /**
+     * Create error records for duplicates and missing parents found during staging processing.
+     */
+    private void createErrorRecordsFromStaging(Ingestion ingestion, Submission submission,
+                                               StagingResult collegamentiResult,
+                                               StagingResult soggettiResult,
+                                               StagingResult rapportiResult) {
+        List<ErrorRecord> allErrorRecords = new ArrayList<>();
+
+        // Get error types
+        ErrorType duplicateType = errorTypeRepository.findByErrorCode(ErrorTypeCode.MERCHANT_ALREADY_EXISTS.getErrorCode())
+                .orElseThrow(() -> new RuntimeException("Error type MERCHANT_ALREADY_EXISTS not found"));
+        ErrorType missingParentType = errorTypeRepository.findByErrorCode(ErrorTypeCode.FOREIGN_KEY_ERROR.getErrorCode())
+                .orElseThrow(() -> new RuntimeException("Error type FOREIGN_KEY_ERROR not found"));
+
+        // Collegamenti duplicates
+        if (collegamentiResult.duplicateCount() > 0) {
+            List<Object[]> duplicates = stagingRepository.getDuplicateCollegamentiDetails(submission.getId());
+            for (Object[] row : duplicates) {
+                String rawRow = row[0] != null ? String.valueOf(row[0]) : "";
+                String errorMessage = row[1] != null ? String.valueOf(row[1]) : "Collegamenti already exists";
+                ErrorRecord errorRecord = createErrorRecordObject(ingestion, submission, rawRow, duplicateType, errorMessage);
+                allErrorRecords.add(errorRecord);
+            }
+            log.info("Created {} error records for duplicate Collegamenti", duplicates.size());
+        }
+
+        // Soggetti duplicates
+        if (soggettiResult.duplicateCount() > 0) {
+            List<Object[]> duplicates = stagingRepository.getDuplicateSoggettiDetails(submission.getId());
+            for (Object[] row : duplicates) {
+                String rawRow = row[0] != null ? String.valueOf(row[0]) : "";
+                String errorMessage = row[1] != null ? String.valueOf(row[1]) : "Soggetti already exists";
+                ErrorRecord errorRecord = createErrorRecordObject(ingestion, submission, rawRow, duplicateType, errorMessage);
+                allErrorRecords.add(errorRecord);
+            }
+            log.info("Created {} error records for duplicate Soggetti", duplicates.size());
+        }
+
+        // Soggetti missing Collegamenti parent
+        if (soggettiResult.missingMerchantCount() > 0) {
+            List<Object[]> missing = stagingRepository.getMissingSoggettiCollegamentiDetails(submission.getId());
+            for (Object[] row : missing) {
+                String rawRow = row[0] != null ? String.valueOf(row[0]) : "";
+                String errorMessage = row[1] != null ? String.valueOf(row[1]) : "Missing Collegamenti parent";
+                ErrorRecord errorRecord = createErrorRecordObject(ingestion, submission, rawRow, missingParentType, errorMessage);
+                allErrorRecords.add(errorRecord);
+            }
+            log.info("Created {} error records for Soggetti with missing Collegamenti", missing.size());
+        }
+
+        // Rapporti duplicates
+        if (rapportiResult.duplicateCount() > 0) {
+            List<Object[]> duplicates = stagingRepository.getDuplicateRapportiDetails(submission.getId());
+            for (Object[] row : duplicates) {
+                String rawRow = row[0] != null ? String.valueOf(row[0]) : "";
+                String errorMessage = row[1] != null ? String.valueOf(row[1]) : "Rapporti already exists";
+                ErrorRecord errorRecord = createErrorRecordObject(ingestion, submission, rawRow, duplicateType, errorMessage);
+                allErrorRecords.add(errorRecord);
+            }
+            log.info("Created {} error records for duplicate Rapporti", duplicates.size());
+        }
+
+        // Rapporti missing Collegamenti parent
+        if (rapportiResult.missingMerchantCount() > 0) {
+            List<Object[]> missing = stagingRepository.getMissingRapportiCollegamentiDetails(submission.getId());
+            for (Object[] row : missing) {
+                String rawRow = row[0] != null ? String.valueOf(row[0]) : "";
+                String errorMessage = row[1] != null ? String.valueOf(row[1]) : "Missing Collegamenti parent";
+                ErrorRecord errorRecord = createErrorRecordObject(ingestion, submission, rawRow, missingParentType, errorMessage);
+                allErrorRecords.add(errorRecord);
+            }
+            log.info("Created {} error records for Rapporti with missing Collegamenti", missing.size());
+        }
+
+        // Bulk insert all error records
+        if (!allErrorRecords.isEmpty()) {
+            log.info("Bulk inserting {} error records for duplicates and missing parents", allErrorRecords.size());
+            errorRecordRepository.bulkInsertRecordsWithCauses(allErrorRecords, ingestion.getId());
+        }
     }
     
     /**

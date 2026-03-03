@@ -1230,4 +1230,220 @@ public class StagingIngestionServiceImpl implements StagingIngestionService {
 
         return lines;
     }
+
+    // ==================== LOAD-ONLY METHODS (FOR ORPHAN VALIDATION WORKFLOW) ====================
+
+    /**
+     * Load collegamenti file to staging ONLY - does NOT process to main tables.
+     * This allows orphan validation to run before data reaches main tables.
+     */
+    @Override
+    public StagingResult loadCollegamentiToStagingOnly(RemoteFile file, Ingestion ingestion, Submission submission) throws IOException {
+        log.info("Loading collegamenti to STAGING ONLY for file: {}, submission: {}", file.name(), submission.getId());
+        long startTime = System.currentTimeMillis();
+
+        List<String> lines = readAllLines(file);
+        if (lines.isEmpty()) {
+            return new StagingResult(0, 0);
+        }
+
+        int totalValidationErrors = 0;
+        int totalParsed = 0;
+        int batchNumber = 0;
+
+        List<it.deloitte.postrxade.entity.Collegamenti> batchCollegamenti = new ArrayList<>(MERCHANT_PARSE_BATCH_SIZE);
+        List<ErrorRecord> batchErrors = new ArrayList<>();
+        Set<String> fileLevelRecords = new HashSet<>();
+
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            try {
+                ErrorRecord error = processCollegamentiLine(line, ingestion, submission, batchCollegamenti, fileLevelRecords);
+                if (error != null) {
+                    batchErrors.add(error);
+                }
+            } catch (Exception e) {
+                if (totalValidationErrors < 10) {
+                    log.warn("Error processing collegamenti line {}: {}", i + 1, e.getMessage());
+                }
+                try {
+                    ErrorRecord error = createErrorRecordFromException(e, line, ingestion, submission);
+                    batchErrors.add(error);
+                } catch (NotFoundRecordException ex) {
+                    log.error("Failed to create error record for exception", ex);
+                }
+            }
+
+            if (batchCollegamenti.size() >= MERCHANT_PARSE_BATCH_SIZE || i == lines.size() - 1) {
+                if (!batchCollegamenti.isEmpty() || !batchErrors.isEmpty()) {
+                    batchNumber++;
+                    log.info("Loading batch {}: {} collegamenti, {} errors (total parsed: {}/{})",
+                            batchNumber, batchCollegamenti.size(), batchErrors.size(), i + 1, lines.size());
+
+                    if (!batchErrors.isEmpty()) {
+                        errorRecordRepository.bulkInsertRecordsWithCauses(batchErrors, ingestion.getId());
+                        totalValidationErrors += batchErrors.size();
+                    }
+
+                    if (!batchCollegamenti.isEmpty()) {
+                        stagingRepository.bulkLoadCollegamentiToStaging(batchCollegamenti, ingestion.getId(), submission.getId());
+                        totalParsed += batchCollegamenti.size();
+                    }
+
+                    batchCollegamenti.clear();
+                    batchErrors.clear();
+                }
+            }
+        }
+
+        lines.clear();
+
+        long elapsed = System.currentTimeMillis() - startTime;
+        log.info("Loaded {} collegamenti to STAGING ONLY in {}ms, {} validation errors", totalParsed, elapsed, totalValidationErrors);
+
+        return new StagingResult(totalParsed, 0, 0, totalValidationErrors);
+    }
+
+    /**
+     * Load soggetti file to staging ONLY - does NOT process to main tables.
+     * This allows orphan validation to run before data reaches main tables.
+     */
+    @Override
+    public StagingResult loadSoggettiToStagingOnly(RemoteFile file, Ingestion ingestion, Submission submission) throws IOException {
+        log.info("Loading soggetti to STAGING ONLY for file: {}, submission: {}", file.name(), submission.getId());
+        long startTime = System.currentTimeMillis();
+
+        List<String> lines = readAllLines(file);
+        if (lines.isEmpty()) {
+            return new StagingResult(0, 0);
+        }
+
+        int totalValidationErrors = 0;
+        int totalParsed = 0;
+        int batchNumber = 0;
+
+        List<Soggetti> batchSoggetti = new ArrayList<>(MERCHANT_PARSE_BATCH_SIZE);
+        List<ErrorRecord> batchErrors = new ArrayList<>();
+        Set<String> fileLevelMerchants = new HashSet<>();
+
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            try {
+                ErrorRecord error = processSoggettiLine(line, ingestion, submission, batchSoggetti, fileLevelMerchants);
+                if (error != null) {
+                    batchErrors.add(error);
+                }
+            } catch (Exception e) {
+                if (totalValidationErrors < 10) {
+                    log.warn("Error processing soggetti line {}: {}", i + 1, e.getMessage());
+                }
+                try {
+                    ErrorRecord error = createErrorRecordFromException(e, line, ingestion, submission);
+                    batchErrors.add(error);
+                } catch (NotFoundRecordException ex) {
+                    log.error("Failed to create error record for exception", ex);
+                }
+            }
+
+            if (batchSoggetti.size() >= MERCHANT_PARSE_BATCH_SIZE || i == lines.size() - 1) {
+                if (!batchSoggetti.isEmpty() || !batchErrors.isEmpty()) {
+                    batchNumber++;
+                    log.info("Loading batch {}: {} soggetti, {} errors (total parsed: {}/{})",
+                            batchNumber, batchSoggetti.size(), batchErrors.size(), i + 1, lines.size());
+
+                    if (!batchErrors.isEmpty()) {
+                        errorRecordRepository.bulkInsertRecordsWithCauses(batchErrors, ingestion.getId());
+                        totalValidationErrors += batchErrors.size();
+                    }
+
+                    if (!batchSoggetti.isEmpty()) {
+                        stagingRepository.bulkLoadSoggettiToStaging(batchSoggetti, ingestion.getId(), submission.getId());
+                        totalParsed += batchSoggetti.size();
+                    }
+
+                    batchSoggetti.clear();
+                    batchErrors.clear();
+                }
+            }
+        }
+
+        lines.clear();
+
+        long elapsed = System.currentTimeMillis() - startTime;
+        log.info("Loaded {} soggetti to STAGING ONLY in {}ms, {} validation errors", totalParsed, elapsed, totalValidationErrors);
+
+        return new StagingResult(totalParsed, 0, 0, totalValidationErrors);
+    }
+
+    /**
+     * Load rapporti file to staging ONLY - does NOT process to main tables.
+     * This allows orphan validation to run before data reaches main tables.
+     */
+    @Override
+    public StagingResult loadRapportiToStagingOnly(RemoteFile file, Ingestion ingestion, Submission submission) throws IOException {
+        log.info("Loading rapporti to STAGING ONLY for file: {}, submission: {}", file.name(), submission.getId());
+        long startTime = System.currentTimeMillis();
+
+        List<String> lines = readAllLines(file);
+        if (lines.isEmpty()) {
+            return new StagingResult(0, 0);
+        }
+
+        int totalValidationErrors = 0;
+        int totalParsed = 0;
+        int batchNumber = 0;
+
+        List<it.deloitte.postrxade.entity.Rapporti> batchRapporti = new ArrayList<>(MERCHANT_PARSE_BATCH_SIZE);
+        List<ErrorRecord> batchErrors = new ArrayList<>();
+        Set<String> fileLevelRecords = new HashSet<>();
+
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            try {
+                ErrorRecord error = processRapportiLine(line, ingestion, submission, batchRapporti, fileLevelRecords);
+                if (error != null) {
+                    batchErrors.add(error);
+                }
+            } catch (Exception e) {
+                if (totalValidationErrors < 10) {
+                    log.warn("Error processing rapporti line {}: {}", i + 1, e.getMessage());
+                }
+                try {
+                    ErrorRecord error = createErrorRecordFromException(e, line, ingestion, submission);
+                    batchErrors.add(error);
+                } catch (NotFoundRecordException ex) {
+                    log.error("Failed to create error record for exception", ex);
+                }
+            }
+
+            if (batchRapporti.size() >= MERCHANT_PARSE_BATCH_SIZE || i == lines.size() - 1) {
+                if (!batchRapporti.isEmpty() || !batchErrors.isEmpty()) {
+                    batchNumber++;
+                    log.info("Loading batch {}: {} rapporti, {} errors (total parsed: {}/{})",
+                            batchNumber, batchRapporti.size(), batchErrors.size(), i + 1, lines.size());
+
+                    if (!batchErrors.isEmpty()) {
+                        errorRecordRepository.bulkInsertRecordsWithCauses(batchErrors, ingestion.getId());
+                        totalValidationErrors += batchErrors.size();
+                    }
+
+                    if (!batchRapporti.isEmpty()) {
+                        stagingRepository.bulkLoadRapportiToStaging(batchRapporti, ingestion.getId(), submission.getId());
+                        totalParsed += batchRapporti.size();
+                    }
+
+                    batchRapporti.clear();
+                    batchErrors.clear();
+                }
+            }
+        }
+
+        lines.clear();
+
+        long elapsed = System.currentTimeMillis() - startTime;
+        log.info("Loaded {} rapporti to STAGING ONLY in {}ms, {} validation errors", totalParsed, elapsed, totalValidationErrors);
+
+        return new StagingResult(totalParsed, 0, 0, totalValidationErrors);
+    }
+
 }

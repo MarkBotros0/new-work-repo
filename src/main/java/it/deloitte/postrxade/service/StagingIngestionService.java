@@ -90,6 +90,45 @@ public interface StagingIngestionService {
      */
     StagingResult processCambioNdgFile(RemoteFile file, Ingestion ingestion, Submission submission) throws IOException;
 
+    /**
+     * Load collegamenti file to staging ONLY (without processing to main tables).
+     * Used for orphan validation workflow where all files are loaded first,
+     * then validated, then processed to main tables.
+     *
+     * @param file       the remote file to process
+     * @param ingestion  the ingestion entity
+     * @param submission the submission entity
+     * @return result with counts of parsed and validation errors
+     * @throws IOException if file reading fails
+     */
+    StagingResult loadCollegamentiToStagingOnly(RemoteFile file, Ingestion ingestion, Submission submission) throws IOException;
+
+    /**
+     * Load soggetti file to staging ONLY (without processing to main tables).
+     * Used for orphan validation workflow where all files are loaded first,
+     * then validated, then processed to main tables.
+     *
+     * @param file       the remote file to process
+     * @param ingestion  the ingestion entity
+     * @param submission the submission entity
+     * @return result with counts of parsed and validation errors
+     * @throws IOException if file reading fails
+     */
+    StagingResult loadSoggettiToStagingOnly(RemoteFile file, Ingestion ingestion, Submission submission) throws IOException;
+
+    /**
+     * Load rapporti file to staging ONLY (without processing to main tables).
+     * Used for orphan validation workflow where all files are loaded first,
+     * then validated, then processed to main tables.
+     *
+     * @param file       the remote file to process
+     * @param ingestion  the ingestion entity
+     * @param submission the submission entity
+     * @return result with counts of parsed and validation errors
+     * @throws IOException if file reading fails
+     */
+    StagingResult loadRapportiToStagingOnly(RemoteFile file, Ingestion ingestion, Submission submission) throws IOException;
+
 //    /**
 //     * Process merchant records directly (already parsed and validated).
 //     *
